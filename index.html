@@ -1,1883 +1,586 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>QuantumGuard — Honeypot Intrusion Detection</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<style>
-  :root {
-    --bg: #09090f;
-    --bg2: #0e0e1a;
-    --bg3: #13131f;
-    --bg4: #1a1a2e;
-    --border: rgba(100,120,255,0.12);
-    --border2: rgba(100,120,255,0.22);
-    --accent: #6366f1;
-    --accent2: #818cf8;
-    --accent3: #4f46e5;
-    --green: #22c55e;
-    --green2: #16a34a;
-    --red: #ef4444;
-    --red2: #dc2626;
-    --amber: #f59e0b;
-    --amber2: #d97706;
-    --teal: #14b8a6;
-    --pink: #ec4899;
-    --text: #f1f5f9;
-    --text2: #94a3b8;
-    --text3: #475569;
-    --mono: 'Space Mono', monospace;
-    --sans: 'DM Sans', sans-serif;
-    --r: 8px;
-    --r2: 14px;
-  }
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html { scroll-behavior: smooth; }
-  body {
-    font-family: var(--sans);
-    background: var(--bg);
-    color: var(--text);
-    min-height: 100vh;
-    overflow-x: hidden;
-    font-size: 15px;
-  }
+﻿  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuantumGuard — Honeypot Intrusion Detection</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+  <div class="app">
 
-  /* GRID BACKGROUND */
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background-image:
-      linear-gradient(rgba(99,102,241,0.04) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(99,102,241,0.04) 1px, transparent 1px);
-    background-size: 40px 40px;
-    pointer-events: none;
-    z-index: 0;
-  }
-
-  /* SCANLINE OVERLAY */
-  body::after {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background: repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 2px,
-      rgba(0,0,0,0.04) 2px,
-      rgba(0,0,0,0.04) 4px
-    );
-    pointer-events: none;
-    z-index: 0;
-  }
-
-  .app { position: relative; z-index: 1; }
-
-  /* ─── HEADER ─── */
-  header {
-    border-bottom: 1px solid var(--border);
-    background: rgba(9,9,15,0.85);
-    backdrop-filter: blur(20px);
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    padding: 0 2rem;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: 60px;
-  }
-  .logo {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-family: var(--mono);
-    font-size: 15px;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    color: var(--text);
-  }
-  .logo-icon {
-    width: 32px; height: 32px;
-    background: var(--accent3);
-    border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    position: relative;
-    overflow: hidden;
-  }
-  .logo-icon::after {
-    content: '';
-    position: absolute;
-    width: 12px; height: 12px;
-    border: 2px solid rgba(255,255,255,0.9);
-    border-radius: 50%;
-    animation: pulse 2s ease-in-out infinite;
-  }
-  @keyframes pulse {
-    0%, 100% { transform: scale(0.8); opacity: 0.6; }
-    50% { transform: scale(1.2); opacity: 1; }
-  }
-  .logo span { color: var(--accent2); }
-  .status-bar {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--green);
-    background: rgba(34,197,94,0.08);
-    border: 1px solid rgba(34,197,94,0.2);
-    padding: 4px 12px;
-    border-radius: 100px;
-  }
-  .status-dot {
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: var(--green);
-    animation: blink 1.5s step-end infinite;
-  }
-  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
-
-  nav {
-    display: flex;
-    gap: 4px;
-  }
-  .nav-btn {
-    background: none;
-    border: none;
-    color: var(--text2);
-    font-family: var(--sans);
-    font-size: 13px;
-    padding: 6px 14px;
-    border-radius: var(--r);
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .nav-btn:hover, .nav-btn.active { color: var(--text); background: var(--bg4); }
-  .nav-btn.active { color: var(--accent2); }
-
-  /* ─── MAIN LAYOUT ─── */
-  main { display: flex; min-height: calc(100vh - 60px); }
-  .sidebar {
-    width: 260px;
-    min-width: 260px;
-    border-right: 1px solid var(--border);
-    padding: 1.5rem 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-    background: rgba(14,14,26,0.5);
-  }
-  .content { flex: 1; padding: 2rem; display: flex; flex-direction: column; gap: 2rem; overflow: hidden; }
-
-  /* ─── SIDEBAR COMPONENTS ─── */
-  .sidebar-section { display: flex; flex-direction: column; gap: 6px; }
-  .sidebar-label {
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--text3);
-    padding: 0 6px;
-    margin-bottom: 2px;
-  }
-  .sidebar-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 10px;
-    border-radius: var(--r);
-    cursor: pointer;
-    transition: all 0.15s;
-    color: var(--text2);
-    font-size: 13px;
-    border: 1px solid transparent;
-  }
-  .sidebar-item:hover { background: var(--bg4); color: var(--text); }
-  .sidebar-item.active {
-    background: rgba(99,102,241,0.15);
-    border-color: rgba(99,102,241,0.3);
-    color: var(--accent2);
-  }
-  .sidebar-item-icon {
-    width: 20px; height: 20px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 14px;
-    flex-shrink: 0;
-  }
-
-  .threat-meter {
-    background: var(--bg3);
-    border: 1px solid var(--border);
-    border-radius: var(--r2);
-    padding: 1rem;
-  }
-  .threat-title {
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--text3);
-    margin-bottom: 10px;
-  }
-  .threat-level {
-    font-family: var(--mono);
-    font-size: 22px;
-    font-weight: 700;
-    margin-bottom: 6px;
-  }
-  .threat-bar-wrap { height: 6px; background: var(--bg4); border-radius: 3px; overflow: hidden; margin-bottom: 6px; }
-  .threat-bar { height: 100%; border-radius: 3px; transition: width 0.8s ease; }
-  .threat-sub { font-size: 11px; color: var(--text3); }
-
-  .qubit-visual {
-    background: var(--bg3);
-    border: 1px solid var(--border);
-    border-radius: var(--r2);
-    padding: 1rem;
-  }
-  .qubit-title {
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--text3);
-    margin-bottom: 10px;
-  }
-  .qubit-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; }
-  .qubit-cell {
-    aspect-ratio: 1;
-    border-radius: 6px;
-    background: var(--bg4);
-    border: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: var(--mono);
-    font-size: 13px;
-    color: var(--text3);
-    transition: all 0.3s;
-    position: relative;
-    overflow: hidden;
-  }
-  .qubit-cell.active-plus {
-    background: rgba(99,102,241,0.2);
-    border-color: var(--accent);
-    color: var(--accent2);
-  }
-  .qubit-cell.active-cross {
-    background: rgba(20,184,166,0.15);
-    border-color: var(--teal);
-    color: var(--teal);
-  }
-  .qubit-cell.alert-cell {
-    background: rgba(239,68,68,0.2);
-    border-color: var(--red);
-    color: var(--red);
-    animation: flash 0.4s ease;
-  }
-  @keyframes flash { 0%,100%{opacity:1} 50%{opacity:0.4} }
-
-  /* ─── CARDS ─── */
-  .card {
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: var(--r2);
-    padding: 1.25rem 1.5rem;
-  }
-  .card-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 1rem;
-  }
-  .card-title {
-    font-family: var(--mono);
-    font-size: 12px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--text2);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .card-title-dot {
-    width: 6px; height: 6px;
-    border-radius: 50%;
-  }
-
-  /* ─── STATS GRID ─── */
-  .stats-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 1rem; }
-  .stat-card {
-    background: var(--bg3);
-    border: 1px solid var(--border);
-    border-radius: var(--r2);
-    padding: 1.2rem 1.4rem;
-    position: relative;
-    overflow: hidden;
-  }
-  .stat-card::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 2px;
-  }
-  .stat-card.green::before { background: var(--green); }
-  .stat-card.red::before { background: var(--red); }
-  .stat-card.amber::before { background: var(--amber); }
-  .stat-card.accent::before { background: var(--accent); }
-  .stat-label { font-size: 11px; color: var(--text3); font-family: var(--mono); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; }
-  .stat-value { font-family: var(--mono); font-size: 28px; font-weight: 700; line-height: 1; }
-  .stat-sub { font-size: 11px; color: var(--text3); margin-top: 4px; }
-  .stat-card.green .stat-value { color: var(--green); }
-  .stat-card.red .stat-value { color: var(--red); }
-  .stat-card.amber .stat-value { color: var(--amber); }
-  .stat-card.accent .stat-value { color: var(--accent2); }
-
-  /* ─── TOKEN TABLE ─── */
-  .token-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .token-table th {
-    text-align: left;
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--text3);
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--border);
-  }
-  .token-table td { padding: 10px 12px; border-bottom: 1px solid rgba(100,120,255,0.06); vertical-align: middle; }
-  .token-table tr:last-child td { border-bottom: none; }
-  .token-table tr:hover td { background: rgba(99,102,241,0.04); }
-
-  .badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 3px 10px;
-    border-radius: 100px;
-    font-size: 11px;
-    font-family: var(--mono);
-    font-weight: 700;
-    letter-spacing: 0.04em;
-  }
-  .badge-green { background: rgba(34,197,94,0.12); color: var(--green); border: 1px solid rgba(34,197,94,0.25); }
-  .badge-red { background: rgba(239,68,68,0.12); color: var(--red); border: 1px solid rgba(239,68,68,0.25); }
-  .badge-amber { background: rgba(245,158,11,0.12); color: var(--amber); border: 1px solid rgba(245,158,11,0.25); }
-  .badge-accent { background: rgba(99,102,241,0.12); color: var(--accent2); border: 1px solid rgba(99,102,241,0.25); }
-  .badge-teal { background: rgba(20,184,166,0.12); color: var(--teal); border: 1px solid rgba(20,184,166,0.25); }
-
-  /* ─── FIDELITY BAR ─── */
-  .fidelity-bar-wrap { display: flex; align-items: center; gap: 8px; }
-  .fidelity-bar-track { flex: 1; height: 5px; background: var(--bg4); border-radius: 3px; overflow: hidden; }
-  .fidelity-bar-fill { height: 100%; border-radius: 3px; }
-  .fidelity-val { font-family: var(--mono); font-size: 11px; min-width: 38px; text-align: right; }
-
-  /* ─── CONTROLS ─── */
-  .controls-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-  .ctrl-group { display: flex; flex-direction: column; gap: 5px; }
-  .ctrl-label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text3); }
-  select, input[type=range], input[type=number] {
-    background: var(--bg4);
-    border: 1px solid var(--border2);
-    color: var(--text);
-    border-radius: var(--r);
-    font-family: var(--sans);
-    font-size: 13px;
-    padding: 7px 10px;
-    outline: none;
-    transition: border-color 0.15s;
-    appearance: none;
-  }
-  select:focus, input:focus { border-color: var(--accent); }
-  select { padding-right: 28px; cursor: pointer; }
-  input[type=range] { padding: 0; height: 4px; accent-color: var(--accent); cursor: pointer; width: 120px; }
-
-  .btn {
-    background: var(--accent3);
-    color: #fff;
-    border: none;
-    border-radius: var(--r);
-    padding: 8px 18px;
-    font-family: var(--sans);
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s;
-    white-space: nowrap;
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-  }
-  .btn:hover { background: var(--accent); transform: translateY(-1px); }
-  .btn:active { transform: scale(0.98); }
-  .btn-ghost {
-    background: transparent;
-    border: 1px solid var(--border2);
-    color: var(--text2);
-  }
-  .btn-ghost:hover { background: var(--bg4); color: var(--text); }
-  .btn-danger { background: rgba(239,68,68,0.2); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
-  .btn-danger:hover { background: var(--red); color: #fff; }
-
-  /* ─── ATTACK SIMULATION ─── */
-  .attack-panel {
-    display: grid;
-    grid-template-columns: repeat(3,1fr);
-    gap: 1rem;
-  }
-  .attack-card {
-    background: var(--bg3);
-    border: 1px solid var(--border);
-    border-radius: var(--r2);
-    padding: 1.2rem;
-    cursor: pointer;
-    transition: all 0.2s;
-    position: relative;
-    overflow: hidden;
-  }
-  .attack-card::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 2px;
-    opacity: 0;
-    transition: opacity 0.2s;
-  }
-  .attack-card.random::before { background: var(--amber); }
-  .attack-card.fixed::before { background: var(--teal); }
-  .attack-card.clone::before { background: var(--pink); }
-  .attack-card:hover { border-color: var(--border2); }
-  .attack-card:hover::before { opacity: 1; }
-  .attack-card.selected { border-color: var(--accent); }
-  .attack-icon { font-size: 22px; margin-bottom: 10px; }
-  .attack-name { font-family: var(--mono); font-size: 12px; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 6px; }
-  .attack-desc { font-size: 12px; color: var(--text2); line-height: 1.5; }
-  .attack-fidelity { margin-top: 10px; font-family: var(--mono); font-size: 11px; color: var(--text3); }
-
-  /* ─── AUDIT LOG ─── */
-  .log-wrap { max-height: 340px; overflow-y: auto; }
-  .log-wrap::-webkit-scrollbar { width: 4px; }
-  .log-wrap::-webkit-scrollbar-track { background: transparent; }
-  .log-wrap::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
-  .log-entry {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    padding: 10px 4px;
-    border-bottom: 1px solid rgba(100,120,255,0.06);
-    animation: slideIn 0.3s ease;
-  }
-  @keyframes slideIn { from { opacity:0; transform: translateY(-6px); } to { opacity:1; transform: none; } }
-  .log-entry:last-child { border-bottom: none; }
-  .log-time { font-family: var(--mono); font-size: 10px; color: var(--text3); min-width: 60px; padding-top: 2px; }
-  .log-body { flex: 1; }
-  .log-user { font-size: 13px; font-weight: 500; margin-bottom: 2px; }
-  .log-detail { font-family: var(--mono); font-size: 11px; color: var(--text3); }
-  .log-icon { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; }
-  .log-icon.ok { background: rgba(34,197,94,0.15); color: var(--green); }
-  .log-icon.alert { background: rgba(239,68,68,0.15); color: var(--red); }
-  .log-icon.warn { background: rgba(245,158,11,0.15); color: var(--amber); }
-
-  /* ─── DB HONEYPOT PANEL ─── */
-  .db-panel {
-    background: var(--bg3);
-    border: 1px solid var(--border);
-    border-radius: var(--r2);
-    overflow: hidden;
-  }
-  .db-header {
-    background: var(--bg4);
-    border-bottom: 1px solid var(--border);
-    padding: 10px 16px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .db-dots { display: flex; gap: 5px; }
-  .db-dot { width: 10px; height: 10px; border-radius: 50%; }
-  .db-dot.r { background: #ff5f57; }
-  .db-dot.y { background: #febc2e; }
-  .db-dot.g { background: #28c840; }
-  .db-title { font-family: var(--mono); font-size: 11px; color: var(--text3); flex: 1; text-align: center; }
-  .db-body { padding: 1rem; font-family: var(--mono); font-size: 12px; }
-  .db-row { display: flex; gap: 1rem; padding: 6px 0; border-bottom: 1px solid rgba(100,120,255,0.07); }
-  .db-row:last-child { border-bottom: none; }
-  .db-key { color: var(--accent2); min-width: 180px; }
-  .db-val { color: var(--text2); }
-  .db-val.masked { color: var(--text3); letter-spacing: 0.1em; }
-  .db-val.quantum { color: var(--teal); }
-
-  /* ─── TABS ─── */
-  .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem; }
-  .tab {
-    padding: 8px 16px;
-    font-size: 13px;
-    color: var(--text3);
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-    transition: all 0.15s;
-  }
-  .tab:hover { color: var(--text2); }
-  .tab.active { color: var(--accent2); border-bottom-color: var(--accent); }
-
-  /* ─── THEORY PANEL ─── */
-  .theory-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 1rem; }
-  .theory-card {
-    background: var(--bg3);
-    border: 1px solid var(--border);
-    border-radius: var(--r2);
-    padding: 1.2rem;
-  }
-  .theory-card-title {
-    font-family: var(--mono);
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    margin-bottom: 8px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .theory-card-body { font-size: 13px; color: var(--text2); line-height: 1.7; }
-  .formula {
-    font-family: var(--mono);
-    background: var(--bg4);
-    border: 1px solid var(--border);
-    border-radius: var(--r);
-    padding: 8px 14px;
-    font-size: 13px;
-    color: var(--accent2);
-    margin: 8px 0;
-  }
-
-  /* ─── CHART WRAPPER ─── */
-  .chart-wrap { position: relative; width: 100%; }
-
-  /* ─── TERMINAL ─── */
-  .terminal {
-    background: #050508;
-    border: 1px solid var(--border);
-    border-radius: var(--r2);
-    overflow: hidden;
-  }
-  .terminal-bar {
-    background: var(--bg4);
-    border-bottom: 1px solid var(--border);
-    padding: 8px 16px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--text3);
-  }
-  .terminal-body {
-    padding: 1rem;
-    font-family: var(--mono);
-    font-size: 12px;
-    line-height: 1.8;
-    max-height: 220px;
-    overflow-y: auto;
-  }
-  .terminal-body::-webkit-scrollbar { width: 4px; }
-  .terminal-body::-webkit-scrollbar-thumb { background: var(--border2); }
-  .t-prompt { color: var(--accent2); }
-  .t-ok { color: var(--green); }
-  .t-alert { color: var(--red); }
-  .t-info { color: var(--text3); }
-  .t-val { color: var(--amber); }
-  .t-cursor {
-    display: inline-block;
-    width: 8px; height: 14px;
-    background: var(--accent2);
-    animation: blink 1s step-end infinite;
-    vertical-align: -2px;
-  }
-
-  /* ─── SECTION HEADER ─── */
-  .section-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 1.5rem;
-  }
-  .section-title {
-    font-family: var(--mono);
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--text2);
-  }
-
-  /* ─── PAGE SECTIONS ─── */
-  .page { display: none; }
-  .page.active { display: flex; flex-direction: column; gap: 1.5rem; }
-
-  /* ─── ANIMATIONS ─── */
-  .fadeIn { animation: fadeIn 0.4s ease; }
-  @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
-
-  /* ─── REPORT BANNER ─── */
-  .report-banner {
-    background: linear-gradient(135deg, rgba(99,102,241,0.15), rgba(79,70,229,0.08));
-    border: 1px solid rgba(99,102,241,0.3);
-    border-radius: var(--r2);
-    padding: 1.5rem;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  /* ─── RESPONSIVE ─── */
-  @media (max-width: 900px) {
-    .sidebar { display: none; }
-    .stats-grid { grid-template-columns: repeat(2,1fr); }
-    .attack-panel { grid-template-columns: 1fr; }
-    .theory-grid { grid-template-columns: 1fr; }
-  }
-
-  .no-events { pointer-events: none; }
-
-  /* Tooltip */
-  [data-tip] { position: relative; cursor: help; }
-  [data-tip]::after {
-    content: attr(data-tip);
-    position: absolute;
-    bottom: calc(100% + 6px);
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--bg4);
-    border: 1px solid var(--border2);
-    color: var(--text2);
-    font-size: 11px;
-    font-family: var(--mono);
-    padding: 5px 10px;
-    border-radius: 6px;
-    white-space: nowrap;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.15s;
-    z-index: 10;
-  }
-  [data-tip]:hover::after { opacity: 1; }
-</style>
-</head>
-<body>
-<div class="app">
-
-<!-- HEADER -->
-<header>
-  <div style="display:flex;align-items:center;gap:2rem;">
-    <div class="logo">
-      <div class="logo-icon"></div>
-      Quantum<span>Guard</span>
-    </div>
-    <nav>
-      <button class="nav-btn active" onclick="showPage('dashboard',this)">Dashboard</button>
-      <button class="nav-btn" onclick="showPage('simulate',this)">Simulate</button>
-      <button class="nav-btn" onclick="showPage('analytics',this)">Analytics</button>
-      <button class="nav-btn" onclick="showPage('theory',this)">Theory</button>
-    </nav>
-  </div>
-  <div class="status-bar">
-    <div class="status-dot"></div>
-    HONEYPOT ACTIVE — DB_PROD_ADMIN
-  </div>
-</header>
-
-<main>
-<!-- SIDEBAR -->
-<aside class="sidebar">
-  <div class="sidebar-section">
-    <div class="sidebar-label">Protected Resource</div>
-    <div class="sidebar-item active">
-      <div class="sidebar-item-icon">🗄️</div>
-      <div>
-        <div style="font-size:12px;font-weight:500;">PostgreSQL Admin</div>
-        <div style="font-size:10px;color:var(--text3);">db-prod-01.internal</div>
+  <!-- HEADER -->
+  <header>
+    <div style="display:flex;align-items:center;gap:1.75rem;">
+      <div class="logo">
+        <div class="logo-mark"></div>
+        Quantum<span style="color:var(--accent2);">Guard</span>
       </div>
+      <nav>
+        <button class="nav-btn active" onclick="showPage('dashboard',this)">Dashboard</button>
+        <button class="nav-btn" onclick="showPage('simulate',this)">Simulate</button>
+        <button class="nav-btn" onclick="showPage('analytics',this)">Analytics</button>
+        <button class="nav-btn" onclick="showPage('theory',this)">Theory</button>
+        <button class="nav-btn" onclick="showPage('report',this)">Report</button>
+      </nav>
     </div>
-    <div class="sidebar-item">
-      <div class="sidebar-item-icon">🔑</div>
-      <div>
-        <div style="font-size:12px;font-weight:500;">API Master Key</div>
-        <div style="font-size:10px;color:var(--text3);">vault/prod/api_root</div>
-      </div>
+    <div class="status-pill">
+      <div class="pulse-dot"></div>
+      <span id="status-resource-label">DB_PROD_ADMIN · ACTIVE</span>
     </div>
-    <div class="sidebar-item">
-      <div class="sidebar-item-icon">📦</div>
-      <div>
-        <div style="font-size:12px;font-weight:500;">S3 Backup Bucket</div>
-        <div style="font-size:10px;color:var(--text3);">prod-backup-2024</div>
-      </div>
-    </div>
-  </div>
+  </header>
 
-  <div class="sidebar-section">
-    <div class="sidebar-label">Tripwire Config</div>
-    <div style="padding:0 6px;display:flex;flex-direction:column;gap:8px;">
-      <div>
-        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;">
-          <span style="color:var(--text3);">Qubits per token</span>
-          <span class="t-val" id="qubit-count-label">6</span>
+  <main>
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sb-section">
+      <div class="sb-label">Protected Resources</div>
+      <div class="resource-item active" id="res-db" onclick="switchResource('db')">
+        <div class="resource-icon">🗄️</div>
+        <div class="resource-info">
+          <div class="resource-name">PostgreSQL Admin</div>
+          <div class="resource-sub">db-prod-01.internal</div>
         </div>
-        <input type="range" min="2" max="12" value="6" id="qubit-slider" style="width:100%;" oninput="updateQubitCount(this.value)">
+        <div class="resource-status-dot" style="background:var(--green);animation:blink 2s step-end infinite;"></div>
       </div>
-      <div>
-        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;">
-          <span style="color:var(--text3);">Alert threshold</span>
-          <span class="t-val" id="threshold-label">0.85</span>
+      <div class="resource-item" id="res-api" onclick="switchResource('api')">
+        <div class="resource-icon">🔑</div>
+        <div class="resource-info">
+          <div class="resource-name">API Master Key</div>
+          <div class="resource-sub">vault/prod/api_root</div>
         </div>
-        <input type="range" min="50" max="99" value="85" id="threshold-slider" style="width:100%;" oninput="updateThreshold(this.value)">
+        <div class="resource-status-dot" style="background:var(--green);animation:blink 2.4s step-end infinite;"></div>
+      </div>
+      <div class="resource-item" id="res-s3" onclick="switchResource('s3')">
+        <div class="resource-icon">📦</div>
+        <div class="resource-info">
+          <div class="resource-name">S3 Backup Bucket</div>
+          <div class="resource-sub">prod-backup-2024</div>
+        </div>
+        <div class="resource-status-dot" style="background:var(--green);animation:blink 1.8s step-end infinite;"></div>
       </div>
     </div>
-  </div>
 
-  <div class="threat-meter">
-    <div class="threat-title">Threat Level</div>
-    <div class="threat-level" id="threat-level-text" style="color:var(--green);">LOW</div>
-    <div class="threat-bar-wrap">
-      <div class="threat-bar" id="threat-bar" style="width:12%;background:var(--green);"></div>
-    </div>
-    <div class="threat-sub" id="threat-sub">0 alerts in last session</div>
-  </div>
-
-  <div class="qubit-visual">
-    <div class="qubit-title">Tripwire State</div>
-    <div class="qubit-grid" id="qubit-grid">
-      <!-- filled by JS -->
-    </div>
-    <div style="display:flex;gap:10px;margin-top:8px;font-size:10px;color:var(--text3);">
-      <span style="color:var(--accent2);">■</span> |+⟩ basis
-      <span style="color:var(--teal);">■</span> |×⟩ basis
-    </div>
-  </div>
-</aside>
-
-<!-- CONTENT -->
-<div class="content">
-
-<!-- ═══════════ DASHBOARD PAGE ═══════════ -->
-<div id="page-dashboard" class="page active fadeIn">
-
-  <!-- Stats -->
-  <div class="stats-grid">
-    <div class="stat-card green">
-      <div class="stat-label">Legit Access</div>
-      <div class="stat-value" id="stat-legit">0</div>
-      <div class="stat-sub">Avg fidelity: <span id="stat-legit-fid">—</span></div>
-    </div>
-    <div class="stat-card red">
-      <div class="stat-label">Intrusions Caught</div>
-      <div class="stat-value" id="stat-intrusions">0</div>
-      <div class="stat-sub">Detection rate: <span id="stat-det-rate">—</span></div>
-    </div>
-    <div class="stat-card amber">
-      <div class="stat-label">False Positives</div>
-      <div class="stat-value" id="stat-fp">0</div>
-      <div class="stat-sub">Of legit attempts</div>
-    </div>
-    <div class="stat-card accent">
-      <div class="stat-label">Avg Fidelity Drop</div>
-      <div class="stat-value" id="stat-drop">—</div>
-      <div class="stat-sub">Attacker vs threshold</div>
-    </div>
-  </div>
-
-  <!-- DB HONEYPOT + LOG -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;">
-
-    <div class="card" style="padding:0;overflow:hidden;">
-      <div class="card-header" style="padding:1rem 1.5rem 0;">
-        <div class="card-title">
-          <div class="card-title-dot" style="background:var(--red);animation:blink 2s step-end infinite;"></div>
-          Honeypot DB Credential
+    <div class="sb-section">
+      <div class="sb-label">Tripwire Config</div>
+      <div class="cfg-row">
+        <div class="cfg-top">
+          <span class="cfg-key">Qubits / token</span>
+          <span class="cfg-val" id="qubit-lbl">6</span>
         </div>
-        <div class="badge badge-red" style="font-size:10px;">DECOY</div>
+        <input type="range" min="2" max="12" value="6" id="qubit-slider" oninput="updateQubitCfg(this.value)">
       </div>
-      <div style="padding:0.5rem 1.5rem 0.25rem;font-size:11px;color:var(--text3);">Any access to this resource triggers quantum tripwire verification.</div>
-      <div class="db-panel" style="margin:0.75rem 1rem 1rem;border-radius:var(--r);">
-        <div class="db-header">
-          <div class="db-dots"><div class="db-dot r"></div><div class="db-dot y"></div><div class="db-dot g"></div></div>
-          <div class="db-title">PostgreSQL — db-prod-01.internal:5432</div>
+      <div class="cfg-row" style="margin-top:6px;">
+        <div class="cfg-top">
+          <span class="cfg-key">Alert threshold</span>
+          <span class="cfg-val" id="thresh-lbl">0.85</span>
         </div>
-        <div class="db-body">
-          <div class="db-row"><span class="db-key">HOST</span><span class="db-val">db-prod-01.internal</span></div>
-          <div class="db-row"><span class="db-key">DATABASE</span><span class="db-val">production_users</span></div>
-          <div class="db-row"><span class="db-key">USERNAME</span><span class="db-val">db_admin_root</span></div>
-          <div class="db-row"><span class="db-key">PASSWORD</span><span class="db-val masked">a3f9c1e7b2d8...</span></div>
-          <div class="db-row"><span class="db-key">SHA256_HASH</span><span class="db-val masked" style="font-size:10px;">8f14e45f...</span></div>
-          <div class="db-row"><span class="db-key">QUANTUM_LAYER</span><span class="db-val quantum">⟨ψ| tripwires active [6 qubits]</span></div>
-          <div class="db-row"><span class="db-key">LAST_ROTATED</span><span class="db-val" id="last-rotated">—</span></div>
+        <input type="range" min="50" max="99" value="85" id="thresh-slider" oninput="updateThreshCfg(this.value)">
+      </div>
+    </div>
+
+    <div class="threat-block">
+      <div class="threat-lbl">Threat Level</div>
+      <div class="threat-val" id="threat-val" style="color:var(--green);">LOW</div>
+      <div class="threat-track"><div class="threat-fill" id="threat-fill" style="width:10%;background:var(--green);"></div></div>
+      <div class="threat-desc" id="threat-desc">No active threats detected</div>
+    </div>
+
+    <div class="qubit-box">
+      <div class="qb-title">Live Tripwire State</div>
+      <div class="qb-grid" id="qb-grid"></div>
+      <div style="display:flex;gap:10px;margin-top:7px;font-size:9.5px;color:var(--text3);">
+        <span style="color:var(--accent2);">■</span> |+⟩ &nbsp;
+        <span style="color:var(--teal);">■</span> |×⟩ &nbsp;
+        <span style="color:var(--red);">■</span> alarm
+      </div>
+    </div>
+  </aside>
+
+  <!-- CONTENT -->
+  <div class="content">
+
+  <!-- ═══ DASHBOARD ═══ -->
+  <div id="page-dashboard" class="page active">
+
+    <div class="stats-row">
+      <div class="stat g">
+        <div class="stat-lbl">Legit Access</div>
+        <div class="stat-val" id="st-legit">0</div>
+        <div class="stat-sub">Avg fidelity: <span id="st-legit-fid">—</span></div>
+      </div>
+      <div class="stat r">
+        <div class="stat-lbl">Intrusions Caught</div>
+        <div class="stat-val" id="st-intrusions">0</div>
+        <div class="stat-sub">Detection: <span id="st-det">—</span></div>
+      </div>
+      <div class="stat a">
+        <div class="stat-lbl">False Positives</div>
+        <div class="stat-val" id="st-fp">0</div>
+        <div class="stat-sub">Of legit attempts</div>
+      </div>
+      <div class="stat b">
+        <div class="stat-lbl">Avg Fidelity Drop</div>
+        <div class="stat-val" id="st-drop">—</div>
+        <div class="stat-sub">Attacker vs threshold</div>
+      </div>
+    </div>
+
+    <!-- Honeypot resource + log -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;">
+
+      <div class="card" style="padding:0;overflow:hidden;">
+        <div style="padding:1rem 1.375rem 0.75rem;" class="card-hd">
+          <div class="card-title">
+            <div class="dot" style="background:var(--red);animation:blink 2s step-end infinite;"></div>
+            <span id="resource-panel-title">Honeypot DB Credential</span>
+          </div>
+          <span class="badge br">DECOY</span>
+        </div>
+        <div style="padding:0 1.375rem 0.5rem;font-size:11px;color:var(--text3);font-family:var(--mono);">
+          Any access attempt triggers quantum tripwire verification.
+        </div>
+        <!-- DB Panel -->
+        <div id="panel-db" style="margin:0 1rem 1rem;">
+          <div class="db-wrap">
+            <div class="db-bar">
+              <div class="traffic-lights"><div class="tl tl-r"></div><div class="tl tl-y"></div><div class="tl tl-g"></div></div>
+              <div class="db-bartitle">PostgreSQL — db-prod-01.internal:5432</div>
+            </div>
+            <div class="db-body">
+              <div class="db-row"><span class="db-k">HOST</span><span class="db-v">db-prod-01.internal</span></div>
+              <div class="db-row"><span class="db-k">DATABASE</span><span class="db-v">production_users</span></div>
+              <div class="db-row"><span class="db-k">USERNAME</span><span class="db-v">db_admin_root</span></div>
+              <div class="db-row"><span class="db-k">PASSWORD</span><span class="db-v msk">a3f9c1e7b2d84f0c...</span></div>
+              <div class="db-row"><span class="db-k">PORT</span><span class="db-v">5432</span></div>
+              <div class="db-row"><span class="db-k">QUANTUM_LAYER</span><span class="db-v qnt" id="db-qlayer">⟨ψ| 6 tripwire qubits active</span></div>
+              <div class="db-row"><span class="db-k">TOKEN_ROTATED</span><span class="db-v danger" id="db-rotated">—</span></div>
+            </div>
+          </div>
+        </div>
+        <!-- API Panel -->
+        <div id="panel-api" style="margin:0 1rem 1rem;display:none;">
+          <div class="db-wrap">
+            <div class="db-bar">
+              <div class="traffic-lights"><div class="tl tl-r"></div><div class="tl tl-y"></div><div class="tl tl-g"></div></div>
+              <div class="db-bartitle">HashiCorp Vault — vault.internal:8200</div>
+            </div>
+            <div class="db-body">
+              <div class="db-row"><span class="db-k">VAULT_ADDR</span><span class="db-v">https://vault.internal:8200</span></div>
+              <div class="db-row"><span class="db-k">PATH</span><span class="db-v">secret/prod/api_root</span></div>
+              <div class="db-row"><span class="db-k">KEY_ID</span><span class="db-v msk">mrk-d4a9b3c1e7f2...</span></div>
+              <div class="db-row"><span class="db-k">SECRET</span><span class="db-v msk">sk_prod_8f14e45f...</span></div>
+              <div class="db-row"><span class="db-k">SCOPES</span><span class="db-v">read:all, write:prod, admin</span></div>
+              <div class="db-row"><span class="db-k">QUANTUM_LAYER</span><span class="db-v qnt" id="api-qlayer">⟨ψ| 6 tripwire qubits active</span></div>
+              <div class="db-row"><span class="db-k">TOKEN_ROTATED</span><span class="db-v danger" id="api-rotated">—</span></div>
+            </div>
+          </div>
+        </div>
+        <!-- S3 Panel -->
+        <div id="panel-s3" style="margin:0 1rem 1rem;display:none;">
+          <div class="db-wrap">
+            <div class="db-bar">
+              <div class="traffic-lights"><div class="tl tl-r"></div><div class="tl tl-y"></div><div class="tl tl-g"></div></div>
+              <div class="db-bartitle">AWS S3 — prod-backup-2024 (us-east-1)</div>
+            </div>
+            <div class="db-body">
+              <div class="db-row"><span class="db-k">BUCKET</span><span class="db-v">prod-backup-2024</span></div>
+              <div class="db-row"><span class="db-k">REGION</span><span class="db-v">us-east-1</span></div>
+              <div class="db-row"><span class="db-k">ACCESS_KEY_ID</span><span class="db-v msk">AKIA4B7C9D2E1F0...</span></div>
+              <div class="db-row"><span class="db-k">SECRET_ACCESS_KEY</span><span class="db-v msk">wJalrXUtnFEMI/K7...</span></div>
+              <div class="db-row"><span class="db-k">POLICY</span><span class="db-v">s3:GetObject, s3:ListBucket</span></div>
+              <div class="db-row"><span class="db-k">QUANTUM_LAYER</span><span class="db-v qnt" id="s3-qlayer">⟨ψ| 6 tripwire qubits active</span></div>
+              <div class="db-row"><span class="db-k">TOKEN_ROTATED</span><span class="db-v danger" id="s3-rotated">—</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="padding:0;overflow:hidden;">
+        <div class="card-hd" style="padding:1rem 1.375rem 0.75rem;">
+          <div class="card-title">
+            <div class="dot" style="background:var(--accent2);"></div>
+            Audit Log
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="clearLog()">Clear</button>
+        </div>
+        <div class="log-scroll" style="padding:0 1rem 0.5rem;" id="audit-log">
+          <div style="padding:2rem;text-align:center;color:var(--text3);font-size:11px;font-family:var(--mono);">No events yet. Attempt an access below.</div>
         </div>
       </div>
     </div>
 
-    <div class="card" style="padding:0;overflow:hidden;">
-      <div class="card-header" style="padding:1rem 1.5rem 0.5rem;">
-        <div class="card-title">
-          <div class="card-title-dot" style="background:var(--accent2);"></div>
-          Audit Log
-        </div>
-        <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;" onclick="clearLog()">Clear</button>
-      </div>
-      <div class="log-wrap" style="padding:0 1rem 0.5rem;" id="audit-log">
-        <div style="padding:2rem;text-align:center;color:var(--text3);font-size:12px;font-family:var(--mono);">
-          No events yet. Run a simulation.
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- QUICK SIMULATE -->
-  <div class="card">
-    <div class="card-header">
-      <div class="card-title">
-        <div class="card-title-dot" style="background:var(--accent);"></div>
-        Quick Access Attempt
-      </div>
-    </div>
-    <div class="controls-row">
-      <div class="ctrl-group">
-        <div class="ctrl-label">User</div>
-        <select id="quick-user" style="width:160px;">
-          <option value="Alice (Admin)">Alice — Admin</option>
-          <option value="Bob (DevOps)">Bob — DevOps</option>
-          <option value="Eve (Attacker)">Eve — Unknown</option>
-          <option value="Mallory (APT)">Mallory — APT</option>
-          <option value="Anonymous">Anonymous</option>
-        </select>
-      </div>
-      <div class="ctrl-group">
-        <div class="ctrl-label">Strategy</div>
-        <select id="quick-strategy" style="width:160px;">
-          <option value="legit">Legitimate (correct key)</option>
-          <option value="random">Random Basis Attack</option>
-          <option value="fixed">Fixed Basis Attack</option>
-          <option value="clone">Clone Attempt (No-Cloning)</option>
-        </select>
-      </div>
-      <button class="btn" style="align-self:flex-end;" onclick="quickAccess()">
-        ▶ Attempt Access
-      </button>
-      <button class="btn btn-ghost" style="align-self:flex-end;font-size:12px;" onclick="runBatch()">
-        ⚡ Batch (40 trials)
-      </button>
-    </div>
-  </div>
-
-  <!-- Terminal -->
-  <div class="terminal">
-    <div class="terminal-bar">
-      <div class="db-dots"><div class="db-dot r"></div><div class="db-dot y"></div><div class="db-dot g"></div></div>
-      quantum_honeypot.py — tripwire engine v1.0
-    </div>
-    <div class="terminal-body" id="terminal">
-      <div><span class="t-prompt">quantum@guard:~$ </span><span class="t-info">Initializing quantum honeypot system...</span></div>
-      <div><span class="t-info">  [✓] Generating 6 tripwire qubits (H-gate superposition)</span></div>
-      <div><span class="t-info">  [✓] Basis key generated (server-only)</span></div>
-      <div><span class="t-info">  [✓] Fidelity threshold: 0.85</span></div>
-      <div><span class="t-info">  [✓] Honeypot token embedded in db-prod-01.internal</span></div>
-      <div><span class="t-ok">  SYSTEM READY — Awaiting access attempts</span></div>
-      <div><span class="t-prompt">quantum@guard:~$ </span><span class="t-cursor"></span></div>
-    </div>
-  </div>
-</div>
-
-<!-- ═══════════ SIMULATE PAGE ═══════════ -->
-<div id="page-simulate" class="page fadeIn">
-  <div class="section-header">
-    <div class="section-title">Attack Simulation Lab</div>
-    <button class="btn" onclick="runFullSimulation()">⚡ Run Full Simulation (40 trials each)</button>
-  </div>
-
-  <div style="font-size:13px;color:var(--text2);line-height:1.6;max-width:680px;">
-    Select an attacker model and observe how the quantum tripwire responds. 
-    The honeypot protects <strong style="color:var(--text);">PostgreSQL db-prod-01</strong> — any entity without the secret basis key 
-    will produce a measurable fidelity drop, triggering an alert.
-  </div>
-
-  <div class="attack-panel" id="attack-panel">
-    <div class="attack-card random" id="card-random" onclick="selectAttack('random')">
-      <div class="attack-icon">🎲</div>
-      <div class="attack-name">RANDOM BASIS</div>
-      <div class="attack-desc">Attacker randomly guesses '+' or '×' for each qubit. 50% chance per qubit of wrong basis. Expected fidelity ≈ 0.50.</div>
-      <div class="attack-fidelity">Expected detection: ~100%</div>
-    </div>
-    <div class="attack-card fixed" id="card-fixed" onclick="selectAttack('fixed')">
-      <div class="attack-icon">📐</div>
-      <div class="attack-name">FIXED BASIS</div>
-      <div class="attack-desc">Always measures in rectilinear (+) basis. Equivalent to a classical read. Half the qubits use × basis, causing drops.</div>
-      <div class="attack-fidelity">Expected detection: ~85%</div>
-    </div>
-    <div class="attack-card clone" id="card-clone" onclick="selectAttack('clone')">
-      <div class="attack-icon">⧫</div>
-      <div class="attack-name">CLONE ATTEMPT</div>
-      <div class="attack-desc">Attempts to duplicate the qubit state (violates No-Cloning Theorem). Decoherence degrades fidelity severely.</div>
-      <div class="attack-fidelity">Expected detection: ~100%</div>
-    </div>
-  </div>
-
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;">
+    <!-- Quick access -->
     <div class="card">
-      <div class="card-header">
-        <div class="card-title">
-          <div class="card-title-dot" style="background:var(--accent);"></div>
-          Per-Qubit Fidelity Breakdown
-        </div>
-        <div class="badge badge-accent" id="sim-strategy-badge">—</div>
+      <div class="card-hd">
+        <div class="card-title"><div class="dot" style="background:var(--accent);"></div>Quick Access Attempt</div>
       </div>
-      <div id="qubit-breakdown" style="display:flex;flex-direction:column;gap:6px;">
-        <div style="color:var(--text3);font-size:12px;font-family:var(--mono);padding:1.5rem 0;text-align:center;">
-          Select an attack type and run
+      <div class="ctrl-row">
+        <div class="ctrl-grp">
+          <div class="ctrl-lbl">User</div>
+          <select id="q-user" style="width:160px;">
+            <option value="Alice (Admin)">Alice — Admin</option>
+            <option value="Bob (DevOps)">Bob — DevOps</option>
+            <option value="Eve (Unknown)">Eve — Unknown</option>
+            <option value="Mallory (APT)">Mallory — APT</option>
+            <option value="Anonymous">Anonymous</option>
+          </select>
         </div>
+        <div class="ctrl-grp">
+          <div class="ctrl-lbl">Strategy</div>
+          <select id="q-strategy" style="width:170px;">
+            <option value="legit">Legitimate (correct key)</option>
+            <option value="random">Random Basis Attack</option>
+            <option value="fixed">Fixed Basis Attack</option>
+            <option value="clone">Clone Attempt (No-Cloning)</option>
+          </select>
+        </div>
+        <button class="btn" onclick="quickAccess()">▶ Attempt Access</button>
+        <button class="btn btn-ghost" onclick="runBatch()">⚡ Batch 40 trials</button>
       </div>
-      <div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
+    </div>
+
+    <!-- Terminal -->
+    <div class="terminal">
+      <div class="term-bar">
+        <div class="traffic-lights"><div class="tl tl-r"></div><div class="tl tl-y"></div><div class="tl tl-g"></div></div>
+        quantum_honeypot.py — tripwire engine v1.0
+      </div>
+      <div class="term-body" id="terminal">
+        <div><span class="t-p">quantum@guard:~$ </span><span class="t-i">Initialising quantum honeypot system...</span></div>
+        <div><span class="t-i">  [✓] Generating 6 tripwire qubits via H-gate superposition</span></div>
+        <div><span class="t-i">  [✓] Secret basis key generated (server-side only)</span></div>
+        <div><span class="t-i">  [✓] Fidelity threshold set to 0.85</span></div>
+        <div><span class="t-i">  [✓] Honeypot tokens embedded: DB, API, S3</span></div>
+        <div><span class="t-ok">  SYSTEM READY — 3 resources protected</span></div>
+        <div><span class="t-p">quantum@guard:~$ </span><span class="t-cur"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ SIMULATE ═══ -->
+  <div id="page-simulate" class="page">
+    <div class="sec-hd">
+      <div class="sec-title">Attack Simulation Lab</div>
+      <button class="btn" onclick="runFullSim()">⚡ Run All (40 trials each)</button>
+    </div>
+
+    <div style="font-size:13px;color:var(--text2);line-height:1.6;max-width:660px;">
+      Select an attacker model below, then run a simulation against the active honeypot resource.
+      Any entity without the correct basis key will produce a measurable fidelity drop below the alert threshold.
+    </div>
+
+    <div class="atk-grid">
+      <div class="atk-card c-rand" id="atk-random" onclick="selectAtk('random')">
+        <div class="atk-icon">🎲</div>
+        <div class="atk-name">RANDOM BASIS</div>
+        <div class="atk-desc">Attacker guesses '+' or '×' randomly per qubit. 50% wrong-basis chance each. State collapses irreversibly.</div>
+        <div class="atk-rate">Expected detection: ~100%</div>
+      </div>
+      <div class="atk-card c-fixed" id="atk-fixed" onclick="selectAtk('fixed')">
+        <div class="atk-icon">📐</div>
+        <div class="atk-name">FIXED BASIS</div>
+        <div class="atk-desc">Always measures in rectilinear (+) basis. Equivalent to a naive classical read. ~50% qubits measured wrong.</div>
+        <div class="atk-rate">Expected detection: ~85%</div>
+      </div>
+      <div class="atk-card c-clone" id="atk-clone" onclick="selectAtk('clone')">
+        <div class="atk-icon">⧫</div>
+        <div class="atk-name">CLONE ATTEMPT</div>
+        <div class="atk-desc">Attempts to copy qubit state before measuring. Violates No-Cloning Theorem. Decoherence degrades fidelity severely.</div>
+        <div class="atk-rate">Expected detection: ~100%</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;">
+      <div class="card">
+        <div class="card-hd">
+          <div class="card-title"><div class="dot" style="background:var(--accent);"></div>Per-Qubit Fidelity</div>
+          <span class="badge bb" id="sim-strat-badge">—</span>
+        </div>
+        <div id="qb-breakdown" style="display:flex;flex-direction:column;gap:5px;">
+          <div style="color:var(--text3);font-size:11.5px;font-family:var(--mono);padding:1.5rem 0;text-align:center;">Select an attack type above to run</div>
+        </div>
+        <div style="margin-top:0.875rem;padding-top:0.875rem;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
           <span style="font-size:12px;color:var(--text3);">Average fidelity</span>
           <span class="badge" id="avg-fid-badge" style="font-family:var(--mono);">—</span>
         </div>
       </div>
+
+      <div class="card">
+        <div class="card-hd">
+          <div class="card-title"><div class="dot" style="background:var(--teal);"></div>Trial Results</div>
+        </div>
+        <table class="tbl" id="sim-tbl">
+          <thead><tr><th>Trial</th><th>Strategy</th><th>Fidelity</th><th>Status</th></tr></thead>
+          <tbody id="sim-tbody">
+            <tr><td colspan="4" style="text-align:center;color:var(--text3);padding:2rem;font-family:var(--mono);font-size:11px;">No simulations yet</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Legit vs Attacker demo -->
+    <div class="card">
+      <div class="card-hd">
+        <div class="card-title"><div class="dot" style="background:var(--green);"></div>Legitimate vs Attacker Comparison</div>
+        <button class="btn btn-ghost btn-sm" onclick="runLegitDemo()">Run Demo</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+        <div style="background:var(--bg4);border-radius:var(--r);padding:1rem;border:1px solid rgba(31,188,110,0.2);">
+          <div style="font-family:var(--mono);font-size:9.5px;color:var(--green);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:7px;">Legitimate User — Correct Basis</div>
+          <div style="font-family:var(--mono);font-size:24px;font-weight:600;color:var(--green);" id="legit-fid">—</div>
+          <div style="font-size:10.5px;color:var(--text3);margin-top:4px;">Fidelity score</div>
+          <div class="badge bg" style="margin-top:8px;" id="legit-status">AWAITING</div>
+        </div>
+        <div style="background:var(--bg4);border-radius:var(--r);padding:1rem;border:1px solid rgba(232,69,69,0.2);">
+          <div style="font-family:var(--mono);font-size:9.5px;color:var(--red);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:7px;">Attacker — Random Basis (Best Case)</div>
+          <div style="font-family:var(--mono);font-size:24px;font-weight:600;color:var(--red);" id="atk-fid">—</div>
+          <div style="font-size:10.5px;color:var(--text3);margin-top:4px;">Fidelity score</div>
+          <div class="badge br" style="margin-top:8px;" id="atk-status">AWAITING</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ ANALYTICS ═══ -->
+  <div id="page-analytics" class="page">
+    <div class="sec-hd">
+      <div class="sec-title">Statistical Analysis</div>
+      <button class="btn" onclick="runAnalytics()">↺ Run Analysis (40 trials)</button>
+    </div>
+    <div style="font-size:13px;color:var(--text2);max-width:640px;">
+      Multi-trial statistical overview. Each category runs 40 independent trials on fresh quantum tokens.
+      Charts update after each run.
     </div>
 
     <div class="card">
-      <div class="card-header">
-        <div class="card-title">
-          <div class="card-title-dot" style="background:var(--teal);"></div>
-          Simulation Results
-        </div>
-      </div>
-      <table class="token-table" id="sim-results-table">
-        <thead>
-          <tr>
-            <th>Trial</th>
-            <th>Strategy</th>
-            <th>Fidelity</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody id="sim-results-body">
-          <tr><td colspan="4" style="text-align:center;color:var(--text3);padding:2rem;font-family:var(--mono);font-size:12px;">No simulations run yet</td></tr>
+      <div class="card-hd"><div class="card-title"><div class="dot" style="background:var(--accent);"></div>Summary Statistics</div></div>
+      <table class="tbl">
+        <thead><tr><th>Category</th><th>Mean Fidelity</th><th>Std Dev</th><th>Min</th><th>Max</th><th>Alerts</th><th>Detection Rate</th></tr></thead>
+        <tbody id="analytics-tbody">
+          <tr><td colspan="7" style="text-align:center;color:var(--text3);padding:2rem;font-family:var(--mono);font-size:11px;">Click "Run Analysis" to compute</td></tr>
         </tbody>
       </table>
     </div>
-  </div>
 
-  <!-- Legitimate access demo -->
-  <div class="card">
-    <div class="card-header">
-      <div class="card-title">
-        <div class="card-title-dot" style="background:var(--green);"></div>
-        Legitimate Access Comparison
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;">
+      <div class="card">
+        <div class="card-hd"><div class="card-title"><div class="dot" style="background:var(--accent);"></div>Avg Fidelity by Type</div></div>
+        <div class="chart-wrap" style="height:250px;">
+          <canvas id="chart-fid"></canvas>
+        </div>
       </div>
-      <button class="btn btn-ghost" style="font-size:12px;" onclick="runLegitDemo()">Run Demo</button>
-    </div>
-    <div id="legit-demo-wrap" style="display:grid;grid-template-columns:repeat(2,1fr);gap:1rem;">
-      <div style="background:var(--bg4);border-radius:var(--r);padding:1rem;border:1px solid rgba(34,197,94,0.2);">
-        <div style="font-family:var(--mono);font-size:10px;color:var(--green);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px;">Legitimate User (Correct Basis)</div>
-        <div style="font-family:var(--mono);font-size:26px;font-weight:700;color:var(--green);" id="legit-fid">—</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:4px;">Fidelity score</div>
-        <div class="badge badge-green" style="margin-top:8px;" id="legit-status">AWAITING</div>
-      </div>
-      <div style="background:var(--bg4);border-radius:var(--r);padding:1rem;border:1px solid rgba(239,68,68,0.2);">
-        <div style="font-family:var(--mono);font-size:10px;color:var(--red);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px;">Attacker (Best Case: Random)</div>
-        <div style="font-family:var(--mono);font-size:26px;font-weight:700;color:var(--red);" id="attacker-fid">—</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:4px;">Fidelity score</div>
-        <div class="badge badge-red" style="margin-top:8px;" id="attacker-status">AWAITING</div>
+      <div class="card">
+        <div class="card-hd"><div class="card-title"><div class="dot" style="background:var(--teal);"></div>Detection Rate</div></div>
+        <div class="chart-wrap" style="height:250px;">
+          <canvas id="chart-det"></canvas>
+        </div>
       </div>
     </div>
-  </div>
-</div>
 
-<!-- ═══════════ ANALYTICS PAGE ═══════════ -->
-<div id="page-analytics" class="page fadeIn">
-  <div class="section-header">
-    <div class="section-title">Statistical Analysis</div>
-    <button class="btn" onclick="runAnalytics()">↺ Recompute (40 trials)</button>
-  </div>
-
-  <div style="font-size:13px;color:var(--text2);max-width:640px;">
-    Statistical overview from multi-trial simulation. Each category runs 40 independent trials on freshly-generated quantum tokens.
-  </div>
-
-  <!-- Summary table -->
-  <div class="card">
-    <div class="card-header">
-      <div class="card-title"><div class="card-title-dot" style="background:var(--accent);"></div>Summary Statistics</div>
-    </div>
-    <table class="token-table" id="analytics-table">
-      <thead>
-        <tr>
-          <th>Category</th>
-          <th>Mean Fidelity</th>
-          <th>Std Dev</th>
-          <th>Min</th>
-          <th>Max</th>
-          <th>Alerts</th>
-          <th>Detection Rate</th>
-        </tr>
-      </thead>
-      <tbody id="analytics-body">
-        <tr><td colspan="7" style="text-align:center;color:var(--text3);padding:2rem;font-family:var(--mono);font-size:12px;">Click "Recompute" to run analysis</td></tr>
-      </tbody>
-    </table>
-  </div>
-
-  <!-- Charts -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;">
     <div class="card">
-      <div class="card-header">
-        <div class="card-title"><div class="card-title-dot" style="background:var(--accent);"></div>Avg Fidelity by Type</div>
-      </div>
-      <div class="chart-wrap" style="height:260px;">
-        <canvas id="chart-fidelity" role="img" aria-label="Bar chart comparing average fidelity scores across access types">Average fidelity per access type</canvas>
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title"><div class="card-title-dot" style="background:var(--teal);"></div>Detection Rate</div>
-      </div>
-      <div class="chart-wrap" style="height:260px;">
-        <canvas id="chart-detection" role="img" aria-label="Bar chart of detection rates for each attack strategy">Detection rate per attack strategy</canvas>
+      <div class="card-hd"><div class="card-title"><div class="dot" style="background:var(--amber);"></div>Per-Trial Fidelity (All Categories)</div></div>
+      <div class="chart-wrap" style="height:270px;">
+        <canvas id="chart-trials"></canvas>
       </div>
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-header">
-      <div class="card-title"><div class="card-title-dot" style="background:var(--amber);"></div>Fidelity Per Trial (All Categories)</div>
-    </div>
-    <div class="chart-wrap" style="height:280px;">
-      <canvas id="chart-trials" role="img" aria-label="Line chart of fidelity scores per trial for all access categories">Per-trial fidelity scores</canvas>
-    </div>
-  </div>
-</div>
+  <!-- ═══ THEORY ═══ -->
+  <div id="page-theory" class="page">
+    <div class="sec-hd"><div class="sec-title">Theoretical Background</div></div>
 
-<!-- ═══════════ THEORY PAGE ═══════════ -->
-<div id="page-theory" class="page fadeIn">
-  <div class="section-header">
-    <div class="section-title">Theoretical Background</div>
-  </div>
-
-  <div class="tabs">
-    <div class="tab active" onclick="showTab('concepts',this)">Core Concepts</div>
-    <div class="tab" onclick="showTab('gates',this)">Quantum Gates</div>
-    <div class="tab" onclick="showTab('arch',this)">Architecture</div>
-    <div class="tab" onclick="showTab('refs',this)">References</div>
-  </div>
-
-  <div id="tab-concepts">
-    <div class="theory-grid">
-      <div class="theory-card">
-        <div class="theory-card-title" style="color:var(--accent2);">⟨ψ|  Qubit & Superposition</div>
-        <div class="theory-card-body">
-          A qubit exists as superposition until measured. Unlike a classical bit, reading it is not passive — it collapses the state irreversibly.
-          <div class="formula">|ψ⟩ = α|0⟩ + β|1⟩</div>
-          The Hadamard gate transforms |0⟩ into an equal superposition of |0⟩ and |1⟩ — the basis of our tripwire.
-          <div class="formula">H|0⟩ = |+⟩ = (|0⟩+|1⟩)/√2</div>
-        </div>
-      </div>
-      <div class="theory-card">
-        <div class="theory-card-title" style="color:var(--red);">⊗  No-Cloning Theorem</div>
-        <div class="theory-card-body">
-          Proven by Wootters & Zurek (1982). It is <em>physically impossible</em> to create a perfect copy of an unknown quantum state. This is not computational hardness — it is a mathematical consequence of quantum linearity.
-          <div class="formula">∄U : U|ψ⟩|0⟩ = |ψ⟩|ψ⟩  ∀|ψ⟩</div>
-          An attacker cannot duplicate tripwire qubits without disturbing them.
-        </div>
-      </div>
-      <div class="theory-card">
-        <div class="theory-card-title" style="color:var(--teal);">👁  Observer Effect</div>
-        <div class="theory-card-body">
-          Measuring a qubit in an incompatible basis irreversibly disturbs its state. If the tripwire is in '+' basis and an attacker measures in '×', the state collapses to a random result — producing a measurable fidelity drop.
-          <div class="formula">P(wrong basis) → F ≈ 0.50</div>
-          Every measurement in the wrong basis leaves a physics-level fingerprint.
-        </div>
-      </div>
-      <div class="theory-card">
-        <div class="theory-card-title" style="color:var(--green);">≡  State Fidelity</div>
-        <div class="theory-card-body">
-          Fidelity measures how similar two quantum states are. F = 1.0 means identical; F = 0.0 means completely orthogonal. After a wrong-basis measurement, fidelity drops below the alarm threshold.
-          <div class="formula">F(ρ,σ) = |⟨ψ|ϕ⟩|²</div>
-          <div class="formula">Alert if: F_avg &lt; threshold (0.85)</div>
-        </div>
-      </div>
+    <div class="tabs">
+      <div class="tab active" onclick="showTab('concepts',this)">Core Concepts</div>
+      <div class="tab" onclick="showTab('gates',this)">Quantum Gates</div>
+      <div class="tab" onclick="showTab('arch',this)">Architecture</div>
+      <div class="tab" onclick="showTab('refs',this)">References</div>
     </div>
 
-    <div class="card" style="margin-top:1rem;">
-      <div class="card-header">
-        <div class="card-title"><div class="card-title-dot" style="background:var(--accent);"></div>Why Quantum vs Classical Honeypots?</div>
-      </div>
-      <table class="token-table">
-        <thead>
-          <tr><th>Property</th><th>Classical Honeypot</th><th>Quantum Honeypot</th></tr>
-        </thead>
-        <tbody>
-          <tr><td>Silent read</td><td><span class="badge badge-red">Possible ✗</span></td><td><span class="badge badge-green">Impossible ✓</span></td></tr>
-          <tr><td>Credential cloning</td><td><span class="badge badge-red">Trivial ✗</span></td><td><span class="badge badge-green">Forbidden by physics ✓</span></td></tr>
-          <tr><td>Log forgery</td><td><span class="badge badge-red">Possible ✗</span></td><td><span class="badge badge-green">Quantum disturbance remains ✓</span></td></tr>
-          <tr><td>Detection guarantee</td><td><span class="badge badge-amber">Heuristic only</span></td><td><span class="badge badge-green">Physics-level ✓</span></td></tr>
-          <tr><td>False positive rate</td><td><span class="badge badge-amber">Software-dependent</span></td><td><span class="badge badge-green">~0% (correct basis) ✓</span></td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <div id="tab-gates" style="display:none;">
-    <div class="theory-grid">
-      <div class="theory-card">
-        <div class="theory-card-title" style="color:var(--accent2);">H — Hadamard Gate</div>
-        <div class="theory-card-body">
-          Creates superposition. Transforms basis states to equal superposition. Used to prepare tripwire qubits in '+' basis.
-          <div class="formula">H = 1/√2 · [[1, 1], [1, -1]]</div>
-          <div class="formula">H|0⟩ = |+⟩ &nbsp;&nbsp; H|1⟩ = |−⟩</div>
-          Applying H twice returns to the original state (H² = I).
-        </div>
-      </div>
-      <div class="theory-card">
-        <div class="theory-card-title" style="color:var(--teal);">X — Pauli-X Gate (NOT)</div>
-        <div class="theory-card-body">
-          Bit-flip gate. Swaps |0⟩ and |1⟩. Used to encode the '×' diagonal basis variant in tripwires.
-          <div class="formula">X = [[0, 1], [1, 0]]</div>
-          <div class="formula">X|0⟩ = |1⟩ &nbsp;&nbsp; X|1⟩ = |0⟩</div>
-          Combined with H, enables the two-basis tripwire encoding scheme.
-        </div>
-      </div>
-      <div class="theory-card">
-        <div class="theory-card-title" style="color:var(--amber);">M — Measurement</div>
-        <div class="theory-card-body">
-          Collapses the qubit to |0⟩ or |1⟩ with probabilities |α|² and |β|². Measurement in the wrong basis gives random results and destroys the original state.
-          <div class="formula">P(0) = |α|² &nbsp;&nbsp; P(1) = |β|²</div>
-          This irreversibility is what makes the Observer Effect detectable.
-        </div>
-      </div>
-      <div class="theory-card">
-        <div class="theory-card-title" style="color:var(--green);">F — Fidelity Measurement</div>
-        <div class="theory-card-body">
-          After decoding, we compare the returned state to the original |0⟩ reference using the inner product formula. Correct basis → F ≈ 1.0. Wrong basis → F ≈ 0.5.
-          <div class="formula">F = |⟨0|decoded⟩|²</div>
-          Average across all N tripwires gives the token fidelity score.
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div id="tab-arch" style="display:none;">
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title"><div class="card-title-dot" style="background:var(--accent);"></div>Token Architecture</div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;">
-        <div>
-          <div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.1em;">Classical Layer</div>
-          <div class="db-panel">
-            <div class="db-header">
-              <div class="db-dots"><div class="db-dot r"></div><div class="db-dot y"></div><div class="db-dot g"></div></div>
-              <div class="db-title">Honeypot Token (visible)</div>
-            </div>
-            <div class="db-body">
-              <div class="db-row"><span class="db-key">RESOURCE_TYPE</span><span class="db-val">PostgreSQL Admin</span></div>
-              <div class="db-row"><span class="db-key">CREDENTIAL</span><span class="db-val masked">db_admin:a3f9c1e7...</span></div>
-              <div class="db-row"><span class="db-key">PURPOSE</span><span class="db-val" style="color:var(--amber);">DECOY — lure attacker</span></div>
-            </div>
-          </div>
-          <div style="font-size:12px;color:var(--text2);margin-top:8px;line-height:1.6;">
-            Looks authentic to an attacker. No legitimate user should ever access this resource.
+    <div id="tab-concepts">
+      <div class="theory-grid">
+        <div class="thy-card">
+          <div class="thy-title" style="color:var(--accent2);">⟨ψ| Superposition</div>
+          <div class="thy-body">
+            A qubit exists as a superposition of |0⟩ and |1⟩ until it is measured. Unlike a classical bit, reading it is not a passive operation — it collapses the state irreversibly. The Hadamard gate creates this superposition for our tripwires.
+            <div class="formula">|ψ⟩ = α|0⟩ + β|1⟩
+  H|0⟩ = |+⟩ = (|0⟩+|1⟩)/√2</div>
           </div>
         </div>
-        <div>
-          <div style="font-family:var(--mono);font-size:11px;color:var(--teal);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.1em;">Quantum Layer (invisible to attacker)</div>
-          <div class="theory-card" style="border-color:rgba(20,184,166,0.3);">
-            <div class="formula" style="margin-top:0;">N = 6 qubit tripwires</div>
-            <div class="formula">Basis key: [+, ×, +, +, ×, +]</div>
-            <div class="formula">State: H|0⟩ or X|0⟩ per qubit</div>
-            <div style="font-size:12px;color:var(--text2);margin-top:8px;line-height:1.6;">
-              Secret basis key held only by server. Transmitted to legit users via QKD (BB84). Never visible in the token itself.
+        <div class="thy-card">
+          <div class="thy-title" style="color:var(--red);">⊗ No-Cloning Theorem</div>
+          <div class="thy-body">
+            Proven by Wootters & Zurek (1982). It is physically impossible to create a perfect copy of an unknown quantum state. Not a computational limitation — a mathematical consequence of quantum mechanics' linearity.
+            <div class="formula">∄U : U|ψ⟩|0⟩ = |ψ⟩|ψ⟩  ∀|ψ⟩</div>
+            An attacker cannot duplicate tripwire qubits without disturbing them.
+          </div>
+        </div>
+        <div class="thy-card">
+          <div class="thy-title" style="color:var(--teal);">👁 Observer Effect</div>
+          <div class="thy-body">
+            Measuring a qubit in an incompatible basis irreversibly disturbs its state. If a tripwire is in '+' basis and an attacker measures in '×', the state collapses randomly — creating a measurable fidelity drop.
+            <div class="formula">P(wrong basis) → F_avg ≈ 0.50</div>
+            Every measurement in the wrong basis leaves a physics-level fingerprint.
+          </div>
+        </div>
+        <div class="thy-card">
+          <div class="thy-title" style="color:var(--green);">≡ State Fidelity</div>
+          <div class="thy-body">
+            Fidelity measures similarity between two quantum states. F=1.0 means identical; F=0.0 means completely orthogonal. After a wrong-basis measurement, fidelity drops well below the 0.85 alarm threshold.
+            <div class="formula">F(ρ,σ) = |⟨ψ|ϕ⟩|²
+  Alert if: F_avg &lt; threshold (default 0.85)</div>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:0.5rem;">
+        <div class="card-hd"><div class="card-title"><div class="dot" style="background:var(--accent);"></div>Classical vs Quantum Honeypots</div></div>
+        <table class="tbl">
+          <thead><tr><th>Property</th><th>Classical Honeypot</th><th>Quantum Honeypot</th></tr></thead>
+          <tbody>
+            <tr><td>Silent read by attacker</td><td><span class="badge br">Possible ✗</span></td><td><span class="badge bg">Impossible ✓</span></td></tr>
+            <tr><td>Credential cloning</td><td><span class="badge br">Trivial ✗</span></td><td><span class="badge bg">Forbidden by physics ✓</span></td></tr>
+            <tr><td>Log forgery</td><td><span class="badge br">Possible ✗</span></td><td><span class="badge bg">Quantum disturbance persists ✓</span></td></tr>
+            <tr><td>Detection guarantee</td><td><span class="badge ba">Heuristic only</span></td><td><span class="badge bg">Information-theoretic ✓</span></td></tr>
+            <tr><td>False positive rate</td><td><span class="badge ba">Software-dependent</span></td><td><span class="badge bg">~0% with correct basis ✓</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="tab-gates" style="display:none;">
+      <div class="theory-grid">
+        <div class="thy-card">
+          <div class="thy-title" style="color:var(--accent2);">H — Hadamard Gate</div>
+          <div class="thy-body">
+            Creates superposition from a basis state. Applied to |0⟩ to prepare tripwire qubits in the '+' basis. Applying H twice returns to the original (H² = I).
+            <div class="formula">H = 1/√2 · [[1, 1], [1, -1]]
+  H|0⟩ = |+⟩   H|1⟩ = |−⟩</div>
+          </div>
+        </div>
+        <div class="thy-card">
+          <div class="thy-title" style="color:var(--teal);">X — Pauli-X Gate</div>
+          <div class="thy-body">
+            Bit-flip gate. Swaps |0⟩ and |1⟩. Combined with H, encodes the '×' diagonal basis variant — giving our two-basis tripwire scheme.
+            <div class="formula">X = [[0, 1], [1, 0]]
+  X|0⟩ = |1⟩   X|1⟩ = |0⟩</div>
+          </div>
+        </div>
+        <div class="thy-card">
+          <div class="thy-title" style="color:var(--amber);">M — Measurement</div>
+          <div class="thy-body">
+            Collapses the qubit to |0⟩ or |1⟩ with respective probabilities |α|² and |β|². Measurement in the wrong basis gives random results and destroys the original state.
+            <div class="formula">P(|0⟩) = |α|²   P(|1⟩) = |β|²</div>
+          </div>
+        </div>
+        <div class="thy-card">
+          <div class="thy-title" style="color:var(--green);">F — Fidelity</div>
+          <div class="thy-body">
+            After decoding, the returned state is compared to the reference |0⟩. Correct basis → F≈1.0. Wrong basis → F≈0.5. Average across N tripwires gives the token score.
+            <div class="formula">F = |⟨0|decoded⟩|²
+  Averaged over all N tripwires</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-arch" style="display:none;">
+      <div class="card">
+        <div class="card-hd"><div class="card-title"><div class="dot" style="background:var(--accent);"></div>Token Architecture</div></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;">
+          <div>
+            <div style="font-family:var(--mono);font-size:9.5px;color:var(--text3);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.1em;">Classical Layer (visible)</div>
+            <div class="db-wrap">
+              <div class="db-bar"><div class="traffic-lights"><div class="tl tl-r"></div><div class="tl tl-y"></div><div class="tl tl-g"></div></div><div class="db-bartitle">Honeypot Token</div></div>
+              <div class="db-body">
+                <div class="db-row"><span class="db-k">RESOURCE_TYPE</span><span class="db-v">PostgreSQL Admin</span></div>
+                <div class="db-row"><span class="db-k">CREDENTIAL</span><span class="db-v msk">db_admin:a3f9c1e7...</span></div>
+                <div class="db-row"><span class="db-k">PURPOSE</span><span class="db-v danger">DECOY — lure attacker</span></div>
+              </div>
+            </div>
+            <div style="font-size:11.5px;color:var(--text2);margin-top:8px;line-height:1.6;">Looks authentic. No legitimate user should ever access this resource — it exists only to catch intruders.</div>
+          </div>
+          <div>
+            <div style="font-family:var(--mono);font-size:9.5px;color:var(--teal);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.1em;">Quantum Layer (invisible to attacker)</div>
+            <div class="thy-card" style="border-color:rgba(15,191,176,0.3);">
+              <div class="formula" style="margin-top:0;">N = 6 qubit tripwires
+  Basis key: [+, ×, +, +, ×, +]
+  State: H|0⟩ or (HX)|0⟩ per qubit</div>
+              <div style="font-size:11.5px;color:var(--text2);margin-top:8px;line-height:1.6;">Secret basis key held only by server. Transmitted to authorised users via QKD (BB84). Never embedded in the token itself.</div>
             </div>
           </div>
         </div>
       </div>
-    </div>
-
-    <div class="card" style="margin-top:1rem;">
-      <div class="card-header">
-        <div class="card-title"><div class="card-title-dot" style="background:var(--teal);"></div>Decision Flow</div>
-      </div>
-      <div style="display:flex;gap:0;align-items:center;justify-content:space-between;overflow-x:auto;padding:0.5rem 0;">
-        <div style="text-align:center;flex:1;min-width:80px;">
-          <div style="background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.35);border-radius:8px;padding:10px 6px;font-family:var(--mono);font-size:11px;color:var(--accent2);">Token<br>accessed</div>
-        </div>
-        <div style="color:var(--text3);font-size:18px;padding:0 6px;">→</div>
-        <div style="text-align:center;flex:1;min-width:80px;">
-          <div style="background:rgba(20,184,166,0.12);border:1px solid rgba(20,184,166,0.3);border-radius:8px;padding:10px 6px;font-family:var(--mono);font-size:11px;color:var(--teal);">Tripwire<br>qubits<br>measured</div>
-        </div>
-        <div style="color:var(--text3);font-size:18px;padding:0 6px;">→</div>
-        <div style="text-align:center;flex:1;min-width:80px;">
-          <div style="background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);border-radius:8px;padding:10px 6px;font-family:var(--mono);font-size:11px;color:var(--amber);">Fidelity<br>score<br>computed</div>
-        </div>
-        <div style="color:var(--text3);font-size:18px;padding:0 6px;">→</div>
-        <div style="text-align:center;flex:1;min-width:80px;">
-          <div style="background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:10px 6px;font-family:var(--mono);font-size:11px;color:var(--red);">F &lt; 0.85?<br>→ ALERT</div>
-        </div>
-        <div style="color:var(--text3);font-size:18px;padding:0 6px;">→</div>
-        <div style="text-align:center;flex:1;min-width:80px;">
-          <div style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);border-radius:8px;padding:10px 6px;font-family:var(--mono);font-size:11px;color:var(--green);">F ≥ 0.85?<br>→ OK</div>
+      <div class="card" style="margin-top:0.75rem;">
+        <div class="card-hd"><div class="card-title"><div class="dot" style="background:var(--teal);"></div>Decision Flow</div></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;overflow-x:auto;padding:0.5rem 0;flex-wrap:wrap;">
+          <div style="text-align:center;flex:1;min-width:70px;"><div style="background:rgba(90,110,240,0.12);border:1px solid rgba(90,110,240,0.3);border-radius:7px;padding:9px 5px;font-family:var(--mono);font-size:10px;color:var(--accent2);">Token<br>accessed</div></div>
+          <div style="color:var(--text3);padding:0 4px;font-size:16px;">→</div>
+          <div style="text-align:center;flex:1;min-width:70px;"><div style="background:var(--teal2);border:1px solid rgba(15,191,176,0.3);border-radius:7px;padding:9px 5px;font-family:var(--mono);font-size:10px;color:var(--teal);">Tripwire<br>qubits<br>measured</div></div>
+          <div style="color:var(--text3);padding:0 4px;font-size:16px;">→</div>
+          <div style="text-align:center;flex:1;min-width:70px;"><div style="background:var(--amber2);border:1px solid rgba(240,162,46,0.3);border-radius:7px;padding:9px 5px;font-family:var(--mono);font-size:10px;color:var(--amber);">Fidelity<br>computed</div></div>
+          <div style="color:var(--text3);padding:0 4px;font-size:16px;">→</div>
+          <div style="text-align:center;flex:1;min-width:70px;"><div style="background:var(--red2);border:1px solid rgba(232,69,69,0.3);border-radius:7px;padding:9px 5px;font-family:var(--mono);font-size:10px;color:var(--red);">F &lt; 0.85?<br>→ ALERT</div></div>
+          <div style="color:var(--text3);padding:0 4px;font-size:16px;">→</div>
+          <div style="text-align:center;flex:1;min-width:70px;"><div style="background:var(--green2);border:1px solid rgba(31,188,110,0.3);border-radius:7px;padding:9px 5px;font-family:var(--mono);font-size:10px;color:var(--green);">F ≥ 0.85?<br>→ OK</div></div>
         </div>
       </div>
     </div>
-  </div>
 
-  <div id="tab-refs" style="display:none;">
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title"><div class="card-title-dot" style="background:var(--accent);"></div>References</div>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:12px;font-size:13px;line-height:1.6;">
-        <div style="padding:10px;background:var(--bg3);border-radius:var(--r);border:1px solid var(--border);">
-          <div style="font-family:var(--mono);font-size:11px;color:var(--accent2);margin-bottom:4px;">[1]</div>
-          W. K. Wootters and W. H. Zurek, "A single quantum cannot be cloned," <em style="color:var(--text2);">Nature</em>, vol. 299, pp. 802–803, 1982.
-        </div>
-        <div style="padding:10px;background:var(--bg3);border-radius:var(--r);border:1px solid var(--border);">
-          <div style="font-family:var(--mono);font-size:11px;color:var(--accent2);margin-bottom:4px;">[2]</div>
-          IBM Quantum, "Qiskit Documentation," 2024. Available: <span style="color:var(--teal);font-family:var(--mono);font-size:12px;">https://docs.quantum.ibm.com/</span>
-        </div>
-        <div style="padding:10px;background:var(--bg3);border-radius:var(--r);border:1px solid var(--border);">
-          <div style="font-family:var(--mono);font-size:11px;color:var(--accent2);margin-bottom:4px;">[3]</div>
-          L. Spitzner, <em style="color:var(--text2);">Honeypots: Tracking Hackers</em>. Addison-Wesley, 2002.
-        </div>
-        <div style="padding:10px;background:var(--bg3);border-radius:var(--r);border:1px solid var(--border);">
-          <div style="font-family:var(--mono);font-size:11px;color:var(--accent2);margin-bottom:4px;">[4]</div>
-          M. A. Nielsen and I. L. Chuang, <em style="color:var(--text2);">Quantum Computation and Quantum Information</em>. Cambridge University Press, 2010.
-        </div>
-        <div style="padding:10px;background:var(--bg3);border-radius:var(--r);border:1px solid var(--border);">
-          <div style="font-family:var(--mono);font-size:11px;color:var(--accent2);margin-bottom:4px;">[5]</div>
-          C. H. Bennett and G. Brassard, "Quantum Cryptography: Public key distribution and coin tossing," <em style="color:var(--text2);">Proc. IEEE Int. Conf. Computers, Systems and Signal Processing</em>, 1984, pp. 175–179.
-        </div>
-      </div>
-      <div style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid var(--border);">
-        <div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-bottom:8px;">TEAM</div>
-        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;">
-          <div style="display:flex;gap:8px;align-items:center;padding:8px;background:var(--bg3);border-radius:var(--r);border:1px solid var(--border);">
-            <div style="width:32px;height:32px;border-radius:50%;background:rgba(99,102,241,0.2);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;color:var(--accent2);font-weight:700;">AV</div>
-            <div><div style="font-size:12px;font-weight:500;">Aman Verma</div><div style="font-size:11px;color:var(--text3);">Theory, Background & Code · 612303196</div></div>
+    <div id="tab-refs" style="display:none;">
+      <div class="card">
+        <div class="card-hd"><div class="card-title"><div class="dot" style="background:var(--accent);"></div>References</div></div>
+        <div style="display:flex;flex-direction:column;gap:9px;font-size:13px;line-height:1.7;">
+          <div style="padding:9px;background:var(--bg3);border-radius:var(--r);border:1px solid var(--border);">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--accent2);margin-bottom:3px;">[1]</div>
+            W. K. Wootters and W. H. Zurek, "A single quantum cannot be cloned," <em style="color:var(--text2);">Nature</em>, vol. 299, pp. 802–803, 1982.
           </div>
-          <div style="display:flex;gap:8px;align-items:center;padding:8px;background:var(--bg3);border-radius:var(--r);border:1px solid var(--border);">
-            <div style="width:32px;height:32px;border-radius:50%;background:rgba(20,184,166,0.2);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;color:var(--teal);font-weight:700;">RB</div>
-            <div><div style="font-size:12px;font-weight:500;">Rohit Bhagat</div><div style="font-size:11px;color:var(--text3);">Tripwire & Architecture · 612301082</div></div>
+          <div style="padding:9px;background:var(--bg3);border-radius:var(--r);border:1px solid var(--border);">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--accent2);margin-bottom:3px;">[2]</div>
+            IBM Quantum, "Qiskit Documentation," 2024. Available: <span style="color:var(--teal);font-family:var(--mono);font-size:11px;">https://docs.quantum.ibm.com/</span>
           </div>
-          <div style="display:flex;gap:8px;align-items:center;padding:8px;background:var(--bg3);border-radius:var(--r);border:1px solid var(--border);">
-            <div style="width:32px;height:32px;border-radius:50%;background:rgba(245,158,11,0.2);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;color:var(--amber);font-weight:700;">AR</div>
-            <div><div style="font-size:12px;font-weight:500;">Ankit Raj</div><div style="font-size:11px;color:var(--text3);">Attacker Simulation & Alerts · 612301004</div></div>
+          <div style="padding:9px;background:var(--bg3);border-radius:var(--r);border:1px solid var(--border);">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--accent2);margin-bottom:3px;">[3]</div>
+            L. Spitzner, <em style="color:var(--text2);">Honeypots: Tracking Hackers</em>. Addison-Wesley, 2002.
           </div>
-          <div style="display:flex;gap:8px;align-items:center;padding:8px;background:var(--bg3);border-radius:var(--r);border:1px solid var(--border);">
-            <div style="width:32px;height:32px;border-radius:50%;background:rgba(236,72,153,0.2);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;color:var(--pink);font-weight:700;">AA</div>
-            <div><div style="font-size:12px;font-weight:500;">Ayan Ashraf</div><div style="font-size:11px;color:var(--text3);">Analysis & Visualisation · 612311013</div></div>
+          <div style="padding:9px;background:var(--bg3);border-radius:var(--r);border:1px solid var(--border);">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--accent2);margin-bottom:3px;">[4]</div>
+            M. A. Nielsen and I. L. Chuang, <em style="color:var(--text2);">Quantum Computation and Quantum Information</em>. Cambridge University Press, 2010.
+          </div>
+          <div style="padding:9px;background:var(--bg3);border-radius:var(--r);border:1px solid var(--border);">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--accent2);margin-bottom:3px;">[5]</div>
+            C. H. Bennett and G. Brassard, "Quantum Cryptography: Public key distribution and coin tossing," <em style="color:var(--text2);">Proc. IEEE Int. Conf. Computers, Systems and Signal Processing</em>, 1984, pp. 175–179.
           </div>
         </div>
       </div>
     </div>
   </div>
-</div>
 
-</div><!-- /content -->
-</main>
-</div><!-- /app -->
-
-<script>
-// ══════════════════════════════════════════
-//  QUANTUM SIMULATION ENGINE
-// ══════════════════════════════════════════
-
-const THRESHOLD = 0.85;
-let N_TRIPWIRES = 6;
-let sessionStats = { legit: 0, legitFids: [], attacks: 0, attackFids: [], fp: 0 };
-let trialHistory = [];
-let charts = {};
-
-// Quantum Math (pure JS simulation)
-function dot(a, b) {
-  let re = 0, im = 0;
-  for (let i = 0; i < a.length; i++) {
-    re += a[i][0]*b[i][0] + a[i][1]*b[i][1];
-    im += a[i][0]*b[i][1] - a[i][1]*b[i][0];
-  }
-  return [re, im];
-}
-function applyH(state) {
-  const s = 1/Math.sqrt(2);
-  return [
-    [s*state[0][0] + s*state[1][0], s*state[0][1] + s*state[1][1]],
-    [s*state[0][0] - s*state[1][0], s*state[0][1] - s*state[1][1]]
-  ];
-}
-function applyX(state) { return [state[1], state[0]]; }
-function fidelity(s1, s2) {
-  const inner = dot(s1.map((_, i) => [s1[i][0], -s1[i][1]]), s2);
-  return inner[0]*inner[0] + inner[1]*inner[1];
-}
-const KET0 = [[1,0],[0,0]];
-
-function makeToken(n) {
-  const states = [], basisKey = [];
-  for (let i = 0; i < n; i++) {
-    const basis = Math.random() < 0.5 ? '+' : 'x';
-    basisKey.push(basis);
-    const state = basis === '+' ? applyH([...KET0.map(k=>[...k])]) : applyX([...KET0.map(k=>[...k])]);
-    states.push(state);
-  }
-  return { states, basisKey };
-}
-
-function measureToken(states, basisKey, guessKey) {
-  const scores = [];
-  for (let i = 0; i < states.length; i++) {
-    const state = states[i];
-    const decoded = guessKey[i] === '+' ? applyH([...state.map(k=>[...k])]) : applyX([...state.map(k=>[...k])]);
-    scores.push(fidelity(KET0, decoded));
-  }
-  const avg = scores.reduce((a,b) => a+b, 0) / scores.length;
-  return { scores, avg };
-}
-
-function access(token, strategy) {
-  const { states, basisKey } = token;
-  let guessKey;
-  if (strategy === 'legit') {
-    guessKey = [...basisKey];
-  } else if (strategy === 'fixed') {
-    guessKey = basisKey.map(() => '+');
-  } else {
-    guessKey = basisKey.map(() => Math.random() < 0.5 ? '+' : 'x');
-  }
-  let { scores, avg } = measureToken(states, basisKey, guessKey);
-  if (strategy === 'clone') {
-    avg *= (0.3 + Math.random() * 0.4);
-  }
-  return { avg, alert: avg < THRESHOLD, scores, guessKey };
-}
-
-// ══════════════════════════════════════════
-//  UI HELPERS
-// ══════════════════════════════════════════
-
-function showPage(name, btn) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('page-' + name).classList.add('active');
-  btn.classList.add('active');
-}
-
-function showTab(name, btn) {
-  ['concepts','gates','arch','refs'].forEach(t => {
-    document.getElementById('tab-' + t).style.display = 'none';
-  });
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.getElementById('tab-' + name).style.display = '';
-  btn.classList.add('active');
-}
-
-function updateQubitCount(v) {
-  N_TRIPWIRES = parseInt(v);
-  document.getElementById('qubit-count-label').textContent = v;
-  renderQubitGrid([]);
-}
-
-function updateThreshold(v) {
-  document.getElementById('threshold-label').textContent = (v/100).toFixed(2);
-}
-
-function getThreshold() {
-  return parseInt(document.getElementById('threshold-slider').value) / 100;
-}
-
-function renderQubitGrid(activeStates, alertIndices=[]) {
-  const grid = document.getElementById('qubit-grid');
-  grid.innerHTML = '';
-  const show = activeStates.length > 0;
-  for (let i = 0; i < N_TRIPWIRES; i++) {
-    const cell = document.createElement('div');
-    cell.className = 'qubit-cell';
-    if (show) {
-      const b = activeStates[i];
-      if (alertIndices.includes(i)) {
-        cell.className += ' alert-cell';
-        cell.textContent = '⚠';
-      } else if (b === '+') {
-        cell.className += ' active-plus';
-        cell.textContent = '|+⟩';
-      } else {
-        cell.className += ' active-cross';
-        cell.textContent = '|×⟩';
-      }
-    } else {
-      cell.textContent = `q${i}`;
-    }
-    grid.appendChild(cell);
-  }
-}
-
-function updateThreatLevel(alertRate) {
-  const bar = document.getElementById('threat-bar');
-  const text = document.getElementById('threat-level-text');
-  const sub = document.getElementById('threat-sub');
-  const totalAlerts = sessionStats.attacks;
-
-  if (alertRate === 0) {
-    bar.style.width = '8%'; bar.style.background = 'var(--green)';
-    text.style.color = 'var(--green)'; text.textContent = 'LOW';
-    sub.textContent = 'No active threats';
-  } else if (alertRate < 0.4) {
-    bar.style.width = '35%'; bar.style.background = 'var(--amber)';
-    text.style.color = 'var(--amber)'; text.textContent = 'MEDIUM';
-    sub.textContent = `${totalAlerts} intrusion attempt(s)`;
-  } else if (alertRate < 0.7) {
-    bar.style.width = '65%'; bar.style.background = 'var(--amber)';
-    text.style.color = 'var(--amber)'; text.textContent = 'HIGH';
-    sub.textContent = `${totalAlerts} intrusion attempt(s)`;
-  } else {
-    bar.style.width = '92%'; bar.style.background = 'var(--red)';
-    text.style.color = 'var(--red)'; text.textContent = 'CRITICAL';
-    sub.textContent = `${totalAlerts} intrusion attempts!`;
-  }
-}
-
-function updateStats() {
-  const legitCount = sessionStats.legitFids.length;
-  const attackCount = sessionStats.attackFids.length;
-  const legitAvg = legitCount > 0 ? (sessionStats.legitFids.reduce((a,b)=>a+b,0)/legitCount) : 0;
-  const caughtCount = sessionStats.attackFids.filter(f => f < getThreshold()).length;
-  const detRate = attackCount > 0 ? (caughtCount/attackCount*100) : 0;
-  const avgAttackFid = attackCount > 0 ? (sessionStats.attackFids.reduce((a,b)=>a+b,0)/attackCount) : 0;
-  const drop = avgAttackFid > 0 ? (getThreshold() - avgAttackFid) : 0;
-
-  document.getElementById('stat-legit').textContent = legitCount;
-  document.getElementById('stat-legit-fid').textContent = legitCount > 0 ? legitAvg.toFixed(3) : '—';
-  document.getElementById('stat-intrusions').textContent = caughtCount;
-  document.getElementById('stat-det-rate').textContent = attackCount > 0 ? detRate.toFixed(0) + '%' : '—';
-  document.getElementById('stat-fp').textContent = sessionStats.fp;
-  document.getElementById('stat-drop').textContent = drop > 0 ? drop.toFixed(3) : '—';
-
-  const alertRate = (sessionStats.attacks > 0) ? (sessionStats.attacks / (sessionStats.attacks + legitCount)) : 0;
-  updateThreatLevel(attackCount > 0 ? detRate/100 : 0);
-}
-
-// ══════════════════════════════════════════
-//  AUDIT LOG
-// ══════════════════════════════════════════
-
-let logEntries = [];
-
-function addLog(user, strategy, fid, isAlert) {
-  const now = new Date();
-  const time = now.toTimeString().slice(0,8);
-  const entry = { user, strategy, fid, isAlert, time };
-  logEntries.unshift(entry);
-  renderLog();
-}
-
-function renderLog() {
-  const container = document.getElementById('audit-log');
-  if (logEntries.length === 0) {
-    container.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text3);font-size:12px;font-family:var(--mono);">No events yet. Run a simulation.</div>';
-    return;
-  }
-  container.innerHTML = logEntries.slice(0,20).map(e => {
-    const iconClass = e.isAlert ? 'alert' : 'ok';
-    const icon = e.isAlert ? '⚠' : '✓';
-    const stratLabel = { legit:'Correct basis', random:'Random basis', fixed:'Fixed basis', clone:'Clone attempt' }[e.strategy] || e.strategy;
-    const statusBadge = e.isAlert
-      ? '<span class="badge badge-red">ALERT — INTRUDER</span>'
-      : '<span class="badge badge-green">OK — Verified</span>';
-    return `<div class="log-entry">
-      <div class="log-time">${e.time}</div>
-      <div class="log-icon ${iconClass}">${icon}</div>
-      <div class="log-body">
-        <div class="log-user">${e.user} ${statusBadge}</div>
-        <div class="log-detail">Strategy: ${stratLabel} · Fidelity: ${e.fid.toFixed(4)} · Threshold: ${getThreshold().toFixed(2)}</div>
+  <!-- ═══ REPORT ═══ -->
+  <div id="page-report" class="page">
+    <div class="sec-hd">
+      <div class="sec-title">Project Report</div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost btn-sm" onclick="buildReport()">↺ Regenerate Report</button>
+        <button class="btn btn-sm" onclick="window.print()">🖨 Print / Save PDF</button>
       </div>
-    </div>`;
-  }).join('');
-}
+    </div>
 
-function clearLog() {
-  logEntries = [];
-  renderLog();
-}
+    <div id="report-body">
+      <div style="padding:3rem;text-align:center;color:var(--text3);font-family:var(--mono);font-size:12px;">
+        Click "Regenerate Report" to build a live report from your session data.
+      </div>
+    </div>
+  </div>
 
-// ══════════════════════════════════════════
-//  TERMINAL
-// ══════════════════════════════════════════
+  </div><!-- /content -->
+  </main>
+  </div><!-- /app -->
 
-function termLog(lines) {
-  const terminal = document.getElementById('terminal');
-  const cursor = terminal.querySelector('.t-cursor');
-  if (cursor) cursor.parentElement.remove();
-  lines.forEach(l => {
-    const div = document.createElement('div');
-    div.innerHTML = l;
-    terminal.appendChild(div);
-  });
-  const promptDiv = document.createElement('div');
-  promptDiv.innerHTML = '<span class="t-prompt">quantum@guard:~$ </span><span class="t-cursor"></span>';
-  terminal.appendChild(promptDiv);
-  terminal.scrollTop = terminal.scrollHeight;
-}
+  <script defer src="js/app.js"></script>
+  </body>
+  </html>
 
-// ══════════════════════════════════════════
-//  QUICK ACCESS
-// ══════════════════════════════════════════
-
-function quickAccess() {
-  const user = document.getElementById('quick-user').value;
-  const strategy = document.getElementById('quick-strategy').value;
-  const T = getThreshold();
-
-  const token = makeToken(N_TRIPWIRES);
-  const result = access(token, strategy);
-  const isAlert = result.avg < T;
-
-  // Update qubit grid
-  const alertIdx = [];
-  for (let i = 0; i < token.basisKey.length; i++) {
-    if (token.basisKey[i] !== (strategy === 'legit' ? token.basisKey[i] : (strategy === 'fixed' ? '+' : Math.random() < 0.5 ? '+' : 'x'))) {
-      alertIdx.push(i);
-    }
-  }
-  renderQubitGrid(token.basisKey, isAlert ? alertIdx : []);
-
-  // Update stats
-  if (strategy === 'legit') {
-    sessionStats.legitFids.push(result.avg);
-    if (isAlert) sessionStats.fp++;
-  } else {
-    sessionStats.attackFids.push(result.avg);
-    if (isAlert) sessionStats.attacks++;
-  }
-  updateStats();
-
-  // Log
-  addLog(user, strategy, result.avg, isAlert);
-
-  // Terminal
-  const stratLabel = { legit:'Legitimate (correct basis)', random:'Random basis attack', fixed:'Fixed basis attack', clone:'Clone attempt' }[strategy];
-  termLog([
-    `<span class="t-prompt">  →</span> <span class="t-info">User: ${user} | Strategy: ${stratLabel}</span>`,
-    `<span class="t-prompt">  →</span> <span class="t-info">Measuring ${N_TRIPWIRES} tripwire qubits...</span>`,
-    `<span class="t-prompt">  →</span> <span class="t-val">Avg fidelity: ${result.avg.toFixed(4)} (threshold: ${T.toFixed(2)})</span>`,
-    isAlert
-      ? `<span class="t-alert">  [!] ALERT: Fidelity below threshold — INTRUSION DETECTED — ${user}</span>`
-      : `<span class="t-ok">  [✓] ACCESS GRANTED: Fidelity above threshold — Legitimate user verified</span>`
-  ]);
-
-  // Update last rotated
-  document.getElementById('last-rotated').textContent = new Date().toLocaleString();
-}
-
-function runBatch() {
-  const strategy = document.getElementById('quick-strategy').value;
-  const T = getThreshold();
-  let alerts = 0;
-  const lines = [`<span class="t-info">  Running 40 trials (${strategy})...</span>`];
-
-  for (let i = 0; i < 40; i++) {
-    const token = makeToken(N_TRIPWIRES);
-    const result = access(token, strategy);
-    if (strategy === 'legit') {
-      sessionStats.legitFids.push(result.avg);
-      if (result.avg < T) { sessionStats.fp++; alerts++; }
-    } else {
-      sessionStats.attackFids.push(result.avg);
-      if (result.avg < T) { sessionStats.attacks++; alerts++; }
-    }
-    trialHistory.push({ strategy, fidelity: result.avg, alert: result.avg < T });
-  }
-  const detRate = strategy === 'legit' ? alerts : alerts;
-  lines.push(`<span class="t-val">  40 trials complete: ${alerts} alerts (${(alerts/40*100).toFixed(0)}% rate)</span>`);
-  lines.push(alerts > 0 && strategy !== 'legit'
-    ? `<span class="t-alert">  [!] Intrusion pattern confirmed across batch</span>`
-    : `<span class="t-ok">  [✓] All trials processed</span>`);
-  termLog(lines);
-  updateStats();
-  addLog('Batch (40x)', strategy, 0.5, alerts > 20);
-  renderQubitGrid([]);
-}
-
-// ══════════════════════════════════════════
-//  SIMULATE PAGE
-// ══════════════════════════════════════════
-
-let selectedAttack = null;
-let simResults = [];
-
-function selectAttack(type) {
-  document.querySelectorAll('.attack-card').forEach(c => c.classList.remove('selected'));
-  document.getElementById('card-' + type).classList.add('selected');
-  selectedAttack = type;
-  runSingleSim(type);
-}
-
-function runSingleSim(strategy) {
-  const T = getThreshold();
-  const token = makeToken(N_TRIPWIRES);
-  const result = access(token, strategy);
-  const isAlert = result.avg < T;
-
-  const nameMap = { random:'RANDOM BASIS', fixed:'FIXED BASIS', clone:'CLONE ATTEMPT' };
-  document.getElementById('sim-strategy-badge').textContent = nameMap[strategy] || strategy;
-
-  // Qubit breakdown
-  const breakdown = document.getElementById('qubit-breakdown');
-  const scores = result.scores || [];
-  breakdown.innerHTML = '';
-  for (let i = 0; i < N_TRIPWIRES; i++) {
-    const fid = scores[i] !== undefined ? scores[i] : result.avg;
-    const color = fid >= T ? 'var(--green)' : 'var(--red)';
-    const fill = fid >= T ? '#22c55e' : '#ef4444';
-    const pct = (fid * 100).toFixed(0);
-    breakdown.innerHTML += `
-      <div class="fidelity-bar-wrap">
-        <span style="font-family:var(--mono);font-size:11px;color:var(--text3);min-width:24px;">q${i}</span>
-        <div class="fidelity-bar-track">
-          <div class="fidelity-bar-fill" style="width:${pct}%;background:${fill};"></div>
-        </div>
-        <span class="fidelity-val" style="color:${color};">${fid.toFixed(3)}</span>
-      </div>`;
-  }
-
-  const avgBadgeClass = isAlert ? 'badge-red' : 'badge-green';
-  document.getElementById('avg-fid-badge').className = 'badge ' + avgBadgeClass;
-  document.getElementById('avg-fid-badge').textContent = result.avg.toFixed(4) + (isAlert ? ' — ALERT' : ' — OK');
-
-  // Add to results table
-  simResults.unshift({ trial: simResults.length + 1, strategy, fid: result.avg, alert: isAlert });
-  renderSimResults();
-}
-
-function renderSimResults() {
-  const body = document.getElementById('sim-results-body');
-  body.innerHTML = simResults.slice(0,8).map(r => {
-    const stratLabel = { legit:'Legitimate', random:'Random Basis', fixed:'Fixed Basis', clone:'Clone' }[r.strategy];
-    const statusBadge = r.alert
-      ? '<span class="badge badge-red">ALERT</span>'
-      : '<span class="badge badge-green">OK</span>';
-    const fidColor = r.alert ? 'var(--red)' : 'var(--green)';
-    return `<tr>
-      <td style="font-family:var(--mono);color:var(--text3);">#${r.trial}</td>
-      <td>${stratLabel}</td>
-      <td style="font-family:var(--mono);color:${fidColor};">${r.fid.toFixed(4)}</td>
-      <td>${statusBadge}</td>
-    </tr>`;
-  }).join('');
-}
-
-function runFullSimulation() {
-  const T = getThreshold();
-  const strategies = ['legit', 'random', 'fixed', 'clone'];
-  strategies.forEach(s => {
-    for (let i = 0; i < 40; i++) {
-      const token = makeToken(N_TRIPWIRES);
-      const result = access(token, s);
-      simResults.unshift({ trial: simResults.length + 1, strategy: s, fid: result.avg, alert: result.avg < T });
-      if (s === 'legit') sessionStats.legitFids.push(result.avg);
-      else { sessionStats.attackFids.push(result.avg); if (result.avg < T) sessionStats.attacks++; }
-    }
-  });
-  renderSimResults();
-  updateStats();
-}
-
-function runLegitDemo() {
-  const T = getThreshold();
-  const token = makeToken(N_TRIPWIRES);
-  const legit = access(token, 'legit');
-  const attacker = access(token, 'random');
-  document.getElementById('legit-fid').textContent = legit.avg.toFixed(4);
-  document.getElementById('attacker-fid').textContent = attacker.avg.toFixed(4);
-  document.getElementById('legit-status').className = 'badge badge-green';
-  document.getElementById('legit-status').textContent = 'VERIFIED';
-  document.getElementById('attacker-status').className = 'badge badge-red';
-  document.getElementById('attacker-status').textContent = 'ALERT';
-}
-
-// ══════════════════════════════════════════
-//  ANALYTICS
-// ══════════════════════════════════════════
-
-function runAnalytics() {
-  const N = 40;
-  const T = getThreshold();
-  const categories = ['Legitimate', 'Random Basis', 'Fixed Basis', 'Clone Attempt'];
-  const stratMap = { 'Legitimate':'legit', 'Random Basis':'random', 'Fixed Basis':'fixed', 'Clone Attempt':'clone' };
-  const results = {};
-
-  categories.forEach(cat => {
-    const fids = [];
-    for (let i = 0; i < N; i++) {
-      const token = makeToken(N_TRIPWIRES);
-      const r = access(token, stratMap[cat]);
-      fids.push(r.avg);
-    }
-    results[cat] = fids;
-  });
-
-  // Stats table
-  const body = document.getElementById('analytics-body');
-  body.innerHTML = '';
-  const rowColors = { 'Legitimate':'var(--green)', 'Random Basis':'var(--amber)', 'Fixed Basis':'var(--teal)', 'Clone Attempt':'var(--pink)' };
-  categories.forEach(cat => {
-    const fids = results[cat];
-    const mean = fids.reduce((a,b)=>a+b,0)/N;
-    const std = Math.sqrt(fids.map(f=>(f-mean)**2).reduce((a,b)=>a+b,0)/N);
-    const min = Math.min(...fids);
-    const max = Math.max(...fids);
-    const alerts = fids.filter(f=>f<T).length;
-    const rate = (alerts/N*100).toFixed(0) + '%';
-    const c = rowColors[cat];
-    body.innerHTML += `<tr>
-      <td style="font-weight:500;color:${c};">${cat}</td>
-      <td style="font-family:var(--mono);">${mean.toFixed(4)}</td>
-      <td style="font-family:var(--mono);color:var(--text3);">${std.toFixed(4)}</td>
-      <td style="font-family:var(--mono);color:var(--text3);">${min.toFixed(4)}</td>
-      <td style="font-family:var(--mono);color:var(--text3);">${max.toFixed(4)}</td>
-      <td style="font-family:var(--mono);">${alerts} / ${N}</td>
-      <td><span class="badge ${alerts === 0 ? 'badge-green' : 'badge-red'}">${rate}</span></td>
-    </tr>`;
-  });
-
-  // Charts
-  const means = categories.map(c => {
-    const f = results[c];
-    return (f.reduce((a,b)=>a+b,0)/f.length);
-  });
-  const rates = categories.map(c => {
-    const f = results[c];
-    return f.filter(x=>x<T).length/N*100;
-  });
-  const colors = ['#22c55e','#f59e0b','#14b8a6','#ec4899'];
-
-  // Chart 1: Fidelity bar
-  if (charts.fidelity) charts.fidelity.destroy();
-  charts.fidelity = new Chart(document.getElementById('chart-fidelity'), {
-    type: 'bar',
-    data: {
-      labels: ['Legitimate','Random Basis','Fixed Basis','Clone Attempt'],
-      datasets: [{
-        label: 'Avg Fidelity',
-        data: means.map(m => parseFloat(m.toFixed(4))),
-        backgroundColor: colors.map(c => c + '33'),
-        borderColor: colors,
-        borderWidth: 2,
-        borderRadius: 4,
-      }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        y: {
-          min: 0, max: 1.1,
-          ticks: { color: '#475569', font: { family: 'Space Mono', size: 10 } },
-          grid: { color: 'rgba(100,120,255,0.08)' }
-        },
-        x: {
-          ticks: { color: '#475569', font: { size: 11 } },
-          grid: { display: false }
-        }
-      },
-      animation: { duration: 600 }
-    }
-  });
-
-  // Chart 2: Detection rate
-  if (charts.detection) charts.detection.destroy();
-  charts.detection = new Chart(document.getElementById('chart-detection'), {
-    type: 'bar',
-    data: {
-      labels: ['False +ve\n(Legit)', 'Random\nBasis', 'Fixed\nBasis', 'Clone\nAttempt'],
-      datasets: [{
-        label: 'Detection Rate %',
-        data: rates.map(r => parseFloat(r.toFixed(1))),
-        backgroundColor: colors.map(c => c + '33'),
-        borderColor: colors,
-        borderWidth: 2,
-        borderRadius: 4,
-      }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        y: {
-          min: 0, max: 115,
-          ticks: { color: '#475569', font: { family: 'Space Mono', size: 10 }, callback: v => v + '%' },
-          grid: { color: 'rgba(100,120,255,0.08)' }
-        },
-        x: {
-          ticks: { color: '#475569', font: { size: 11 } },
-          grid: { display: false }
-        }
-      },
-      animation: { duration: 600 }
-    }
-  });
-
-  // Chart 3: Per-trial line
-  const n = results['Legitimate'].length;
-  const labels = Array.from({length: n}, (_,i) => i+1);
-  if (charts.trials) charts.trials.destroy();
-  charts.trials = new Chart(document.getElementById('chart-trials'), {
-    type: 'line',
-    data: {
-      labels,
-      datasets: categories.map((cat, i) => ({
-        label: cat,
-        data: results[cat].map(f => parseFloat(f.toFixed(4))),
-        borderColor: colors[i],
-        backgroundColor: colors[i] + '18',
-        borderWidth: 1.5,
-        pointRadius: 2,
-        tension: 0.3,
-      }))
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          display: true,
-          labels: { color: '#94a3b8', font: { size: 11 }, boxWidth: 12, boxHeight: 12 }
-        }
-      },
-      scales: {
-        y: {
-          min: 0, max: 1.1,
-          ticks: { color: '#475569', font: { family: 'Space Mono', size: 10 } },
-          grid: { color: 'rgba(100,120,255,0.08)' }
-        },
-        x: {
-          ticks: { color: '#475569', font: { size: 10 }, maxTicksLimit: 10 },
-          grid: { display: false }
-        }
-      },
-      animation: { duration: 800 }
-    }
-  });
-}
-
-// ══════════════════════════════════════════
-//  INIT
-// ══════════════════════════════════════════
-
-document.addEventListener('DOMContentLoaded', () => {
-  renderQubitGrid([]);
-  document.getElementById('last-rotated').textContent = new Date().toLocaleString();
-});
-</script>
-</body>
-</html>
