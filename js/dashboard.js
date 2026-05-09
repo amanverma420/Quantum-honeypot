@@ -1,8 +1,3 @@
-/**
- * state.js
- * Centralised mutable application state.
- * All modules read/write through this object.
- */
 
 const State = {
   // Quantum config

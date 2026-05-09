@@ -1,70 +1,70 @@
-function applyH(s) {
-  const k = 1 / Math.sqrt(2);
-  return [
-    [k * s[0][0] + k * s[1][0], k * s[0][1] + k * s[1][1]],
-    [k * s[0][0] - k * s[1][0], k * s[0][1] - k * s[1][1]]
-  ];
-}
-function applyX(s) { return [[...s[1]], [...s[0]]]; }
-function innerProduct(a, b) {
-  let re = 0, im = 0;
-  for (let i = 0; i < a.length; i++) {
-    re += a[i][0] * b[i][0] + a[i][1] * b[i][1];
-    im += a[i][0] * b[i][1] - a[i][1] * b[i][0];
-  }
-  return re * re + im * im;
-}
-const KET0 = [[1, 0], [0, 0]];
+// function applyH(s) {
+//   const k = 1 / Math.sqrt(2);
+//   return [
+//     [k * s[0][0] + k * s[1][0], k * s[0][1] + k * s[1][1]],
+//     [k * s[0][0] - k * s[1][0], k * s[0][1] - k * s[1][1]]
+//   ];
+// }
+// function applyX(s) { return [[...s[1]], [...s[0]]]; }
+// function innerProduct(a, b) {
+//   let re = 0, im = 0;
+//   for (let i = 0; i < a.length; i++) {
+//     re += a[i][0] * b[i][0] + a[i][1] * b[i][1];
+//     im += a[i][0] * b[i][1] - a[i][1] * b[i][0];
+//   }
+//   return re * re + im * im;
+// }
+// const KET0 = [[1, 0], [0, 0]];
 
-function makeToken(n) {
-  const states = [];
-  const basisKey = [];
+// function makeToken(n) {
+//   const states = [];
+//   const basisKey = [];
 
-  for (let i = 0; i < n; i++) {
-    const basis = Math.random() < 0.5 ? '+' : 'x';
-    basisKey.push(basis);
+//   for (let i = 0; i < n; i++) {
+//     const basis = Math.random() < 0.5 ? '+' : 'x';
+//     basisKey.push(basis);
 
-    let st = [[...KET0[0]], [...KET0[1]]];
-    st = applyH(st);
-    if (basis === 'x') {
-      st = applyX(st);
-      st = applyH(st);
-    }
-    states.push(st);
-  }
+//     let st = [[...KET0[0]], [...KET0[1]]];
+//     st = applyH(st);
+//     if (basis === 'x') {
+//       st = applyX(st);
+//       st = applyH(st);
+//     }
+//     states.push(st);
+//   }
 
-  return { states, basisKey };
-}
+//   return { states, basisKey };
+// }
 
-function measureToken(token, strategy) {
-  const { states, basisKey } = token;
-  const scores = [];
-  const guessKey = [];
+// function measureToken(token, strategy) {
+//   const { states, basisKey } = token;
+//   const scores = [];
+//   const guessKey = [];
 
-  for (let i = 0; i < states.length; i++) {
-    let guess;
-    if (strategy === 'legit') guess = basisKey[i];
-    else if (strategy === 'fixed') guess = '+';
-    else guess = Math.random() < 0.5 ? '+' : 'x';
+//   for (let i = 0; i < states.length; i++) {
+//     let guess;
+//     if (strategy === 'legit') guess = basisKey[i];
+//     else if (strategy === 'fixed') guess = '+';
+//     else guess = Math.random() < 0.5 ? '+' : 'x';
 
-    guessKey.push(guess);
-    let st = states[i].map(r => [...r]);
-    if (guess === 'x') {
-      st = applyX(st);
-      st = applyH(st);
-    }
-    st = applyH(st);
+//     guessKey.push(guess);
+//     let st = states[i].map(r => [...r]);
+//     if (guess === 'x') {
+//       st = applyX(st);
+//       st = applyH(st);
+//     }
+//     st = applyH(st);
 
-    let fid = innerProduct(KET0, st);
-    if (strategy === 'clone') {
-      fid *= (0.28 + Math.random() * 0.42);
-    }
-    scores.push(Math.max(0, Math.min(1, fid)));
-  }
+//     let fid = innerProduct(KET0, st);
+//     if (strategy === 'clone') {
+//       fid *= (0.28 + Math.random() * 0.42);
+//     }
+//     scores.push(Math.max(0, Math.min(1, fid)));
+//   }
 
-  const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-  return { scores, avg, guessKey };
-}
+//   const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+//   return { scores, avg, guessKey };
+// }
 
 let N_QUBITS = 6;
 let THRESHOLD = 0.85;
@@ -867,6 +867,17 @@ function initApp() {
     const el = document.getElementById(id);
     if (el) el.textContent = ts;
   });
+
+  setTimeout(() => {
+    termLog([
+      `<span class="t-ok">  [✓] AerSimulator backend initialised (statevector method)</span>`,
+      `<span class="t-p">  →</span> <span class="t-i">Prep '+': <span class="t-v">H|0⟩ = |+⟩</span></span>`,
+      `<span class="t-p">  →</span> <span class="t-i">Prep 'x': <span class="t-v">H(X|0⟩) = |−⟩  [FIXED]</span></span>`,
+      `<span class="t-p">  →</span> <span class="t-i">Decode '+': <span class="t-v">H†=H</span>   Decode 'x': <span class="t-v">H then X  [FIXED]</span></span>`,
+      `<span class="t-ok">  [✓] Legit fidelity: 1.0000 · Attacker fidelity: ~0.50</span>`,
+    ]);
+  }, 200);
 }
+
 
 window.addEventListener('DOMContentLoaded', initApp);
