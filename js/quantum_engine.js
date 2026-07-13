@@ -68,52 +68,61 @@ class QuantumCircuit {
 const KET0_SV=[[1,0],[0,0]];
 
 // ── makeToken ─────────────────────────────────────────────────────────────────
-function makeToken(n){
-  n=n||N_QUBITS||6;
-  const circuits=[],basisKey=[],backend=new AerSimulator({shots:1024});
-  for(let i=0;i<n;i++){
-    const basis=Math.random()<0.5?'+':'x';
+export function makeToken(n = 6){
+  const circuits = [];
+  const basisKey = [];
+  const backend = new AerSimulator({shots:1024});
+
+  for (let i = 0; i < n; i++) {
+    const basis = Math.random() < 0.5 ? '+' : 'x';
     basisKey.push(basis);
-    const qc=new QuantumCircuit();
-    if(basis==='+'){
+    const qc = new QuantumCircuit();
+
+    if (basis === '+') {
       qc.h();          // |+⟩ = H|0⟩
     } else {
-      qc.x().h();      // |−⟩ = H(X|0⟩)  ← FIXED (old was H→X→H = |0⟩)
+      qc.x().h();      // |−⟩ = H(X|0⟩)
     }
+
     circuits.push(qc);
   }
-  return{circuits,basisKey,backend};
+
+  return { circuits, basisKey, backend };
 }
 
 // ── measureToken ──────────────────────────────────────────────────────────────
-function measureToken(token,strategy){
-  const{circuits,basisKey,backend}=token;
-  const scores=[],guessKey=[],counts_arr=[];
-  for(let i=0;i<circuits.length;i++){
+export function measureToken(token, strategy){
+  const { circuits, basisKey, backend } = token;
+  const scores = [];
+  const guessKey = [];
+  const counts_arr = [];
+
+  for (let i = 0; i < circuits.length; i++) {
     let guess;
-    if(strategy==='legit')      guess=basisKey[i];
-    else if(strategy==='fixed') guess='+';
-    else                        guess=Math.random()<0.5?'+':'x';
+    if (strategy === 'legit')      guess = basisKey[i];
+    else if (strategy === 'fixed') guess = '+';
+    else                           guess = Math.random() < 0.5 ? '+' : 'x';
     guessKey.push(guess);
 
-    const dec=circuits[i].copy();
-    if(guess==='+'){
+    const dec = circuits[i].copy();
+    if (guess === '+') {
       dec.h();        // H† = H
     } else {
-      dec.h().x();    // decode 'x': H then X  ← FIXED (old was X→H→H = |1⟩)
+      dec.h().x();    // decode 'x': H then X
     }
 
-    let be=backend;
-    if(strategy==='clone'){
-      be=new AerSimulator({shots:1024,
-        noiseModel:{type:'depolarising',p:0.3+Math.random()*0.4}});
+    let be = backend;
+    if (strategy === 'clone') {
+      be = new AerSimulator({shots:1024,
+        noiseModel: {type:'depolarising', p: 0.3 + Math.random() * 0.4}});
     }
 
-    const result=be.run(dec);
-    const fid=result.state_fidelity(KET0_SV);
+    const result = be.run(dec);
+    const fid = result.state_fidelity(KET0_SV);
     counts_arr.push(result.get_counts(1024));
-    scores.push(Math.max(0,Math.min(1,fid)));
+    scores.push(Math.max(0, Math.min(1, fid)));
   }
-  const avg=scores.reduce((a,b)=>a+b,0)/scores.length;
-  return{scores,avg,guessKey,counts:counts_arr};
+
+  const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+  return { scores, avg, guessKey, counts: counts_arr };
 }

@@ -2,7 +2,9 @@
   "name": "quantum-honeypot",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "build": "echo 'No build step required for static assets'"
+    "build": "echo 'No build step required for static assets'",
+    "preview": "python -m http.server 5000"
   }
 }
