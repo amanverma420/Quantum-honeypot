@@ -121,6 +121,8 @@ header {
 
 nav {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
   overflow-x: auto;
   scrollbar-width: none;
@@ -168,7 +170,7 @@ nav::-webkit-scrollbar { display: none; }
   animation: blink 1.5s infinite;
 }
 
-main { display: flex; flex: 1; }
+main { display: flex; flex: 1; justify-content: center; }
 
 /* SIDEBAR */
 .sidebar {
@@ -182,13 +184,13 @@ main { display: flex; flex: 1; }
   background: var(--bg2);
   position: sticky;
   top: 60px;
-  height: calc(100vh - 60px);
+  max-height: calc(100vh - 70px);
   overflow-y: auto;
 }
 .sidebar::-webkit-scrollbar { width: 4px; }
 .sidebar::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 2px; }
 
-.content { flex: 1; padding: 2rem; display: flex; flex-direction: column; gap: 1.5rem; min-width: 0; }
+.content { flex: 1; padding: 2rem; display: flex; flex-direction: column; gap: 1.5rem; min-width: 0; width: 100%; max-width: 1360px; }
 
 .sb-label {
   font-size: 10px;
