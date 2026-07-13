@@ -1,6 +1,6 @@
 # ⚛️ QuantumGuard — Quantum Honeypot System
 
-[![GitHub Pages Deployment](https://github.com/amanverma420/Quantum-honeypot/actions/workflows/static.yml/badge.svg)](https://amanverma420.github.io/Quantum-honeypot/)
+[![Vercel Deployment](https://img.shields.io/badge/deploy-vercel-black?logo=vercel)](https://vercel.com/)
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Qiskit Simulation](https://img.shields.io/badge/physics-Qiskit-purple)](https://qiskit.org/)
@@ -9,7 +9,7 @@ An intrusion detection system leveraging the principles of **quantum mechanics**
 
 ### 🌐 Live Dashboard Demo
 **Access the live web-based control center here:**  
-👉 **[https://amanverma420.github.io/Quantum-honeypot/](https://amanverma420.github.io/Quantum-honeypot/)**
+👉 **[https://quantum-honeypot.vercel.app](https://quantum-honeypot.vercel.app)** (Or your customized Vercel URL)
 
 ---
 
@@ -103,11 +103,21 @@ To execute the backend simulation and compile a PDF technical report:
 ---
 
 ## 🛠 Deployment Configuration
-Automatic deployment is powered by **GitHub Actions** and hosted on **GitHub Pages**:
-1. Go to your repository settings on GitHub.
-2. Navigate to **Settings -> Pages**.
-3. Under **Build and deployment -> Source**, select **GitHub Actions** instead of "Deploy from a branch".
-4. Whenever you push commits to the `main` branch, the workflow inside [static.yml](file:///.github/workflows/static.yml) compiles and updates your live site automatically.
+
+You can host this static dashboard easily using **Vercel** or **Netlify**:
+
+### Option A: Vercel Dashboard (Recommended)
+1. Go to [Vercel](https://vercel.com) and sign in.
+2. Click **Add New -> Project**.
+3. Import your GitHub repository: `https://github.com/amanverma420/Quantum-honeypot`.
+4. Vercel will automatically detect the static project. Leave default settings and click **Deploy**.
+5. Vercel will build the files and provide a live sharing link (e.g. `https://quantum-honeypot.vercel.app`), which will auto-redeploy on every `git push`.
+
+### Option B: Netlify Dashboard
+1. Go to [Netlify](https://netlify.com) and log in.
+2. Click **Add new site -> Import an existing project**.
+3. Choose **GitHub** and select the `Quantum-honeypot` repository.
+4. Leave the build command empty, set the publish directory to `.` (root), and click **Deploy site**.
 
 ---
 
