@@ -1,131 +1,236 @@
-# ⚛️ QuantumGuard — Quantum Honeypot System
+# QuantumGuard — Enterprise Deception & Quantum Laboratory Platform v2.4
 
-[![Vercel Deployment](https://img.shields.io/badge/deploy-vercel-black?logo=vercel)](https://vercel.com/)
-[![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/)
-[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Qiskit Simulation](https://img.shields.io/badge/physics-Qiskit-purple)](https://qiskit.org/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.110%2B-009688.svg)](https://fastapi.tiangolo.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![SIEM](https://img.shields.io/badge/SIEM-ECS%20%7C%20MITRE%20ATT%26CK-orange.svg)](https://attack.mitre.org/)
+[![Tests: Pytest](https://img.shields.io/badge/tests-14%20passed-brightgreen.svg)](quantum_honeypot/tests/)
 
-An intrusion detection system leveraging the principles of **quantum mechanics** (such as superposition, the observer effect, state fidelity, and the no-cloning theorem) to protect critical system assets. By embedding quantum state tripwires within credential honeytokens, silent reading or cloning of secrets becomes physically impossible.
-
-### 🌐 Live Dashboard Demo
-**Access the live web-based control center here:**  
-👉 **[https://quantum-honeypot.vercel.app](https://quantum-honeypot.vercel.app)** (Or your customized Vercel URL)
+QuantumGuard is a full-stack cybersecurity deception technology platform integrated with a real-time Security Operations Center (SOC) dashboard and an interactive quantum information research laboratory.
 
 ---
 
-## 📌 Project Overview
+## 1. System Architecture
 
-QuantumGuard simulates a **quantum-enhanced honeypot** network.
+QuantumGuard is engineered into two strictly separated, complementary layers:
 
-Unlike classical honeytokens (decoy database passwords, API keys, or cloud credentials) which can be copied, cloned, or silently read without immediate detection, QuantumGuard embeds **quantum tripwire qubits** inside decoy assets.
-* **Observer Effect**: An attacker attempting to observe or read the protected token is forced to measure the qubits. Because the secret basis is server-side only, they guess bases, collapsing the superposition states and introducing a measurable fidelity drop.
-* **No-Cloning Theorem**: It is physically impossible for an attacker to copy the state of the qubits to analyze them later. Duplication attempts introduce noise, dragging the fidelity down to ~38% and triggering instant alerts.
+```mermaid
+graph TD
+    subgraph Deception Infrastructure
+        HTTP[Decoy HTTP Gateway :8080]
+        SSH[Decoy SSH Bastion :2222]
+        FS[Canary Filesystem Tripwires]
+    end
+
+    subgraph Central Event Pipeline
+        VAL[Schema Validation & Normalization]
+        RED[Sensitive Credential Redaction]
+        DED[Deduplication & Rate Limiting]
+        DET[MITRE ATT&CK Rule Engine]
+    end
+
+    subgraph Storage & SOC Operations
+        DB[(SQLAlchemy SQLite / PostgreSQL)]
+        INC[Incident Auto-Correlation]
+        SSE[Server-Sent Events /api/v1/soc/stream]
+        DASH[Glassmorphism SOC Dashboard :8000]
+    end
+
+    subgraph Quantum Computing Laboratory
+        BLOCH[Single-Qubit Bloch Engine]
+        CIRC[Multi-Qubit Circuit Simulator]
+        CHSH[Bell-CHSH Inequality Tester]
+        BB84[BB84 QKD Protocol Simulator]
+        GROV[Grover Quantum Search]
+    end
+
+    HTTP --> VAL
+    SSH --> VAL
+    FS --> VAL
+    VAL --> RED --> DED --> DET
+    DET --> DB
+    DET --> INC
+    DET --> SSE
+    SSE --> DASH
+    DASH --> BLOCH
+    DASH --> CIRC
+    DASH --> CHSH
+    DASH --> BB84
+    DASH --> GROV
+```
+
+### Layer A: Production Cybersecurity Deception & Detection
+- **Decoy Assets**: Emulated Stripe API credentials, PostgreSQL database strings, AWS IAM metadata endpoints, OpenSSH bastion prompts, and canary filesystem files.
+- **Central Event Pipeline**: Schema validation (Pydantic), deterministic secret/password redaction, deduplication, and explainable MITRE ATT&CK detection rules.
+- **Incident Management**: Persistent database records (`OPEN`, `INVESTIGATING`, `RESOLVED`, `CLOSED`), automated incident correlation, and analyst notes audit trail.
+- **Real-Time SOC Streaming**: Server-Sent Events (SSE) broadcasting live alerts to connected analysts without polling.
+- **Enterprise Access Control**: NIST-compliant PBKDF2 password hashing (`600,000` iterations) and signed JWT tokens with Role-Based Access Control (`Admin`, `Analyst`, `Viewer`).
+
+### Layer B: Quantum Computing Research Laboratory
+- **Statevector & Bloch Sphere**: Exact single-qubit density matrix representations, gate operations ($H, X, Y, Z, S, T$), and 3D Bloch vector calculations.
+- **Arbitrary Circuit Simulator**: Multi-qubit circuit simulation (1 to 8 qubits) with CNOT entangling gates and shot-sampling probability distributions.
+- **Bell-CHSH Inequality Testing**: Optimal measurement configurations demonstrating quantum non-locality ($S = 2\sqrt{2} \approx 2.8284 > 2.0$).
+- **No-Cloning Demonstration**: Numerical comparison against the universal Bužek-Hillery bound ($F \le 5/6 \approx 0.8333$).
+- **BB84 QKD Simulation**: Complete key distribution lifecycle with Alice preparation, Eve intercept-resend attack, Bob measurement, sifting, and Quantum Bit Error Rate (QBER) analysis.
+- **Grover Search**: Amplitude amplification database search showing quadratic quantum speedup.
+
+> [!NOTE]
+> **Scientific Integrity Disclosure**: Classical deception assets (canary files, API keys, honeypot ports) detect real-world unauthorized access to decoy assets. The Quantum Laboratory models fundamental quantum-information principles. Simulating quantum states in software does not physically alter or protect classical files or passwords.
 
 ---
 
-## 🚀 Key Features
+## 2. Quickstart & Local Setup
 
-* **Quantum Sandbox & Cryptography Lab**: A visual playground to build qubit circuits, apply Hadamard (H) and Pauli-X (X) gates, adjust depolarizing channel noise, simulate fiber alignment polarization angles, and measure outcomes in real-time.
-* **BB84 QKD Visualizer**: A step-by-step interactive walk-through showing Alice preparing qubits, Eve eavesdropping, Bob measuring, and how sifting/reconciling reveals Eve's footprint (25% error rate).
-* **SOC Network Threat Map**: A live canvas visualization mapping client-to-host tracer lines and showing packet traffic routes with interactive visual indicators during credential accesses.
-* **ROC & Confusion Matrix Analytics**: Dynamic charts representing True Positives, False Positives, False Negatives, and True Negatives, alongside a Receiver Operating Characteristic (ROC) curve that recalculates in real-time as the alert threshold slider is modified.
-* **Statistical Simulation Lab**: Batch runs (40-160 trials) analyzing mean fidelity, standard deviation, and alarm rates across Legitimate, Random Guessing, Fixed Basis, and Clone attempts.
-* **Technical Report Generator**: Generate and print comprehensive PDF scientific reports compiling active session telemetry.
+### Prerequisites
+- Python 3.11+
+- Node.js (optional, for frontend static development)
+- Docker & Docker Compose (optional, for containerized deployment)
+
+### 1. Installation
+```powershell
+# Clone repository
+git clone https://github.com/your-org/Quantum-honeypot.git
+cd Quantum-honeypot
+
+# Create and activate virtual environment
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### 2. Run Automated Test Suite
+```powershell
+python -m pytest -v
+```
+*Output: 14 passed (covers quantum mathematics, authentication, event pipeline, and REST API).*
+
+### 3. Start the Unified Web Platform
+```powershell
+uvicorn quantum_honeypot.api.app:app --host 127.0.0.1 --port 8000 --reload
+```
+Open your browser at **`http://localhost:8000/`**.
+
+**Default Developer Credentials**:
+- **Username**: `admin`
+- **Password**: `QuantumGuard@Admin2026`
 
 ---
 
-## 🏗 Directory Structure
+## 3. CLI Management Commands
 
-```bash
-Quantum-honeypot/
-├── .github/
-│   └── workflows/
-│       └── static.yml           # GitHub Actions static deploy workflow
-├── charts/
-│   ├── chart_boxplot.png       # Boxplot fidelity distribution
-│   ├── chart_detection.png     # Detection bar chart
-│   ├── chart_fidelity.png      # Average fidelity bar chart
-│   └── chart_trials.png        # Per-trial fidelity line plot
-├── js/
-│   ├── app.js                  # SOC dashboard controller, sandbox & QKD logic
-│   └── quantum_engine.js       # Browser-based Quantum circuit simulator
-├── screenshots/
-│   └── (Interface previews)
-├── index.html                  # Main control center dashboard
-├── styles.css                  # Custom cyberpunk glassmorphism stylesheet
-├── quantum_honeypot.py         # Python simulation & ReportLab PDF generator
-├── honeypot_report.pdf         # Compiled project evaluation report
-└── README.md                   # Project overview & documentation
+QuantumGuard preserves full backward compatibility with CLI operations:
+
+```powershell
+# View operational honeypot status
+python main.py status
+
+# Deploy filesystem canary tripwire files
+python main.py deploy
+
+# Verify honeytoken with simulated intercept strategy
+python main.py verify --strategy random
+
+# Run multi-trial Monte-Carlo benchmark & generate scientific PDF report
+python main.py simulate --trials 50 --qubits 8 --pdf
 ```
 
 ---
 
-## 🖥 Dashboard Control Center
+## 4. Docker Compose Deployment
 
-### 1. Dashboard
-* **SOC Monitoring**: Live access counters, audit logs, and threat indicators (LOW to CRITICAL).
-* **Honeytoken Decoys**: Panels representing Decoy DB, API, and S3 credentials wrapped with a quantum tripwire layer.
-* **Trace Map**: Interactive canvas drawing trace lines and animating glowing packet pulses when accesses occur.
+Run the complete production stack (PostgreSQL database + QuantumGuard application + persistent volumes):
 
-### 2. Simulate
-* **Malicious Vectors**: Evaluate Random Basis, Fixed Basis, and Clone Attempt strategies.
-* **State collapse**: View per-qubit fidelity grids showing the collapse of individual register elements.
+```bash
+docker-compose up -d --build
+```
 
-### 3. Sandbox & QKD
-* **Circuit Workspace**: Add gates and customize measurement parameters (noise/offset).
-* **QKD BB84 Walkthrough**: Step through key distribution stages and calculate sifted key error rates.
-
-### 4. Analytics
-* **Statistical Telemetry**: Compute means, standard deviations, and alarm counts.
-* **ROC Curve**: Real-time evaluation of True Positive vs False Positive rates under different thresholds.
+Check health:
+```bash
+curl http://localhost:8000/healthz
+curl http://localhost:8000/readyz
+```
 
 ---
 
-## ⚙️ Execution & Setup
+## 5. API Reference
 
-### 🌐 Web Dashboard (Browser)
-The dashboard runs entirely in the client-side browser with zero configuration:
-1. Open `index.html` in any modern web browser.
-2. Alternatively, view the hosted page: **[https://amanverma420.github.io/Quantum-honeypot/](https://amanverma420.github.io/Quantum-honeypot/)**.
+| Endpoint | Method | Role | Description |
+|---|---|---|---|
+| `/healthz` | GET | Public | Liveness probe |
+| `/readyz` | GET | Public | Readiness probe with database health check |
+| `/api/v1/auth/login` | POST | Public | Authenticate user & return Bearer token |
+| `/api/v1/auth/me` | GET | Authenticated | Retrieve current user profile and role |
+| `/api/v1/soc/overview` | GET | Public | Operational metrics, event counts, severity breakdown |
+| `/api/v1/soc/events` | GET | Public | Filtered, paginated security event log |
+| `/api/v1/soc/stream` | GET | Public | Server-Sent Events (SSE) real-time event stream |
+| `/api/v1/soc/incidents` | GET | Public | Active and resolved incidents with analyst notes |
+| `/api/v1/soc/incidents/{id}/status` | PATCH | Analyst | Update incident status (`OPEN`, `INVESTIGATING`, `RESOLVED`) |
+| `/api/v1/soc/decoys` | GET | Public | List registered deception assets |
+| `/api/v1/soc/decoys/simulate-breach` | POST | Analyst | Trigger authorized test breach drill |
+| `/api/v1/soc/reports/export` | GET | Viewer | Export sanitized event logs (CSV or JSON) |
+| `/api/v1/quantum/bloch` | POST | Public | Single-qubit statevector and Bloch sphere coordinates |
+| `/api/v1/quantum/circuit` | POST | Public | Multi-qubit circuit simulation and measurement shots |
+| `/api/v1/quantum/bell-chsh` | POST | Public | Bell CHSH inequality test |
+| `/api/v1/quantum/bb84` | POST | Public | BB84 QKD simulation with Eve interception toggle |
+| `/api/v1/quantum/grover` | POST | Public | Grover search algorithm demonstration |
+| `/api/v1/quantum/no-cloning` | GET | Public | Universal quantum cloning machine (UQCM) bound |
 
-### 🐍 CLI Python Simulation (PDF Report Compilation)
-To execute the backend simulation and compile a PDF technical report:
-1. Install Python dependencies:
-   ```bash
-   pip install numpy matplotlib reportlab
-   ```
-2. Run the script:
-   ```bash
-   python quantum_honeypot.py
-   ```
-3. A file named `honeypot_report.pdf` and refreshed analysis charts will be generated in the root directory.
-
----
-
-## 🛠 Deployment Configuration
-
-You can host this static dashboard easily using **Vercel** or **Netlify**:
-
-### Option A: Vercel Dashboard (Recommended)
-1. Go to [Vercel](https://vercel.com) and sign in.
-2. Click **Add New -> Project**.
-3. Import your GitHub repository: `https://github.com/amanverma420/Quantum-honeypot`.
-4. Vercel will automatically detect the static project. Leave default settings and click **Deploy**.
-5. Vercel will build the files and provide a live sharing link (e.g. `https://quantum-honeypot.vercel.app`), which will auto-redeploy on every `git push`.
-
-### Option B: Netlify Dashboard
-1. Go to [Netlify](https://netlify.com) and log in.
-2. Click **Add new site -> Import an existing project**.
-3. Choose **GitHub** and select the `Quantum-honeypot` repository.
-4. Leave the build command empty, set the publish directory to `.` (root), and click **Deploy site**.
+Full interactive Swagger/OpenAPI documentation is available at **`http://localhost:8000/docs`**.
 
 ---
 
-## 📚 References
-* W. K. Wootters and W. H. Zurek, *"A single quantum cannot be cloned,"* Nature, vol. 299, pp. 802–803, 1982.
-* C. H. Bennett and G. Brassard, *"Quantum Cryptography: Public key distribution and coin tossing,"* Proc. IEEE Int. Conf. on Computers, Systems and Signal Processing, 1984.
-* M. A. Nielsen and I. L. Chuang, *"Quantum Computation and Quantum Information,"* Cambridge University Press, 2010.
+## 6. Repository Structure
 
----
-COEP Technological University, Pune  
-Department of Computer Science & Engineering
+```
+Quantum-honeypot/
+├── Dockerfile                       ← Production Docker container specification
+├── docker-compose.yml               ← Multi-service stack (App + PostgreSQL)
+├── requirements.txt                 ← Pinned Python dependencies
+├── pytest.ini                       ← Automated test configuration
+├── .env.example                     ← Safe environment variables template
+├── index.html                       ← Glassmorphism Web SOC Dashboard & Quantum Lab
+├── styles.css                       ← Cyberpunk styling and UI tokens
+├── js/                              ← Frontend modules
+│   ├── api.js                       ← Centralized API & SSE client
+│   ├── app.js                       ← Dashboard, incidents, and quantum visualization
+│   ├── quantum_engine.js            ← Educational quantum simulator
+│   └── state.js                     ← UI state store
+├── quantum_honeypot/                ← Backend Python package
+│   ├── api/                         ← FastAPI management application & routers
+│   │   ├── app.py                   ← FastAPI app, static mounting, CORS
+│   │   ├── auth_router.py           ← Authentication & session endpoints
+│   │   ├── soc_router.py            ← SOC telemetry, events, incidents, SSE
+│   │   └── quantum_router.py        ← Quantum Lab simulation endpoints
+│   ├── core/                        ← Quantum physics & mathematics engines
+│   │   ├── quantum_lab.py           ← Bloch, circuits, Bell-CHSH, BB84, Grover
+│   │   ├── states.py                ← Density matrices & quantum states
+│   │   ├── gates.py                 ← Unitary quantum gates
+│   │   ├── channels.py              ← Noise & decoherence models
+│   │   ├── fidelity.py              ← Uhlmann fidelity calculations
+│   │   └── cloning.py               ← Bužek-Hillery UQCM bound
+│   ├── db/                          ← Persistent database layer
+│   │   ├── database.py              ← Engine, SessionLocal, init_db seed
+│   │   └── models.py                ← SQLAlchemy models (Events, Incidents, Users)
+│   ├── detection/                   ← Security event ingestion & rules engine
+│   │   ├── pipeline.py              ← Pipeline, redaction, rules, incident correlation
+│   │   ├── alerts.py                ← Alert dispatcher bridge
+│   │   ├── detector.py              ← Bayesian threshold detector
+│   │   └── siem_logger.py           ← ECS / JSONL structured event logger
+│   ├── security/                    ← Cryptographic security & RBAC
+│   │   └── auth.py                  ← PBKDF2 hashing, JWT tokens, RBAC dependencies
+│   ├── traps/                       ← Deception trap daemons
+│   │   ├── http_trap.py             ← Decoy HTTP Gateway (Port 8080)
+│   │   ├── ssh_trap.py              ← Decoy SSH Bastion (Port 2222)
+│   │   └── canary_trap.py           ← Filesystem canary deployer & watcher
+│   ├── tokens/                      ← Honeytoken register & generator
+│   ├── reporting/                   ← Analytics, charts, and PDF generation
+│   ├── tests/                       ← Comprehensive test suite (14 tests)
+│   └── cli.py                       ← Unified CLI management commands
+├── docs/                            ← Technical specifications & PDF reports
+├── DEPLOYMENT.md                    ← Production deployment instructions
+├── ARCHITECTURE.md                  ← System architecture & trust boundaries
+├── SECURITY.md                      ← Threat model & containment rules
+└── QUANTUM_CONCEPTS.md              ← Quantum information mathematical reference
+```

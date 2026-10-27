@@ -15,23 +15,30 @@
 
   <!-- HEADER -->
   <header>
-    <div style="display:flex;align-items:center;gap:1.75rem;">
+    <div style="display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap;">
       <div class="logo">
         <div class="logo-mark"></div>
         Quantum<span style="color:var(--accent);">Guard</span>
       </div>
-      <nav>
-        <button class="nav-btn active" onclick="showPage('dashboard',this)">Dashboard</button>
+      <nav style="display:flex;gap:4px;flex-wrap:wrap;">
+        <button class="nav-btn active" onclick="showPage('dashboard',this)">SOC Overview</button>
+        <button class="nav-btn" onclick="showPage('events',this)">Live Events & Incidents</button>
+        <button class="nav-btn" onclick="showPage('decoys',this)">Deception Traps</button>
+        <button class="nav-btn" title="Quantum Lab & Circuits" onclick="showPage('sandbox',this)">Quantum Lab</button>
         <button class="nav-btn" onclick="showPage('simulate',this)">Simulate</button>
-        <button class="nav-btn" title="Sandbox & QKD" onclick="showPage('sandbox',this)">Sandbox</button>
         <button class="nav-btn" onclick="showPage('analytics',this)">Analytics</button>
         <button class="nav-btn" onclick="showPage('theory',this)">Theory</button>
-        <button class="nav-btn" onclick="showPage('report',this)">Report</button>
+        <button class="nav-btn" onclick="showPage('report',this)">Export</button>
       </nav>
     </div>
-    <div class="status-pill">
-      <div class="pulse-dot"></div>
-      <span id="status-resource-label">DB_PROD_ADMIN · ACTIVE</span>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div class="status-pill" id="sse-pill" title="Server-Sent Events Real-time Ingestion Stream">
+        <div class="pulse-dot" id="sse-dot"></div>
+        <span id="sse-status-label">SSE LIVE</span>
+      </div>
+      <div id="auth-controls" style="display:flex;align-items:center;gap:8px;">
+        <button class="btn btn-sm btn-outline" id="btn-login-modal" onclick="openLoginModal()">Login</button>
+      </div>
     </div>
   </header>
 
@@ -102,8 +109,13 @@
       </div>
     </aside>
 
-    <!-- CONTENT -->
-    <div class="content">
+      <!-- SCIENTIFIC INTEGRITY ADVISORY -->
+      <div class="advisory-banner">
+        <span style="font-size:18px;">🔬</span>
+        <div>
+          <strong>Scientific Integrity Notice:</strong> Classical honeypots & canary tokens detect real-world unauthorized access to decoy assets. The Quantum Laboratory modules demonstrate fundamental quantum-information principles (Born rule, no-cloning theorem, Bell CHSH tests, BB84). Simulated quantum mechanics does not physically protect classical secrets or passwords.
+        </div>
+      </div>
 
       <!-- ═══ DASHBOARD ═══ -->
       <div id="page-dashboard" class="page active">
@@ -299,6 +311,110 @@
             <div><span class="t-ok">  SYSTEM READY — 3 resources protected</span></div>
             <div><span class="t-p">quantum@guard:~$ </span><span class="t-cur"></span></div>
           </div>
+        </div>
+      </div>
+
+      <!-- ═══ LIVE EVENTS & INCIDENTS ═══ -->
+      <div id="page-events" class="page">
+        <div class="sec-hd">
+          <div class="sec-title">Live Security Operations Center (SOC)</div>
+          <div style="display:flex;gap:10px;">
+            <input type="text" id="event-search-input" placeholder="Search IP, token, or message..." class="form-input" style="width:260px;padding:6px 12px;" oninput="filterEventsTable(this.value)">
+            <button class="btn btn-ghost btn-sm" onclick="loadRealEvents()">↺ Refresh</button>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:1.25rem;margin-bottom:1.5rem;">
+          <!-- Live Events Table -->
+          <div class="card" style="padding:0;overflow:hidden;">
+            <div class="card-hd" style="padding:1rem 1.25rem;">
+              <div class="card-title">
+                <div class="dot" style="color:var(--red); background:var(--red); animation:blink 1.5s infinite;"></div>
+                Real-Time Event Ingestion Stream
+              </div>
+              <span class="badge bb" id="event-count-badge">0 Events Loaded</span>
+            </div>
+            <div style="overflow-x:auto;max-height:450px;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Timestamp</th>
+                    <th>Type</th>
+                    <th>Severity</th>
+                    <th>Source IP</th>
+                    <th>MITRE ATT&CK</th>
+                    <th>Message</th>
+                  </tr>
+                </thead>
+                <tbody id="live-events-tbody">
+                  <tr><td colspan="6" style="text-align:center;color:var(--text3);padding:2rem;">Connecting to real-time telemetry...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Incidents & Investigations -->
+          <div class="card" style="padding:1.25rem;">
+            <div class="card-title" style="margin-bottom:1rem;">
+              <div class="dot" style="color:var(--amber); background:var(--amber);"></div>
+              Active Security Incidents
+            </div>
+            <div id="incidents-container" style="display:flex;flex-direction:column;gap:12px;max-height:420px;overflow-y:auto;">
+              <div style="text-align:center;color:var(--text3);font-size:12px;padding:2rem;">Loading incidents...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ DECEPTION TRAPS & CANARIES ═══ -->
+      <div id="page-decoys" class="page">
+        <div class="sec-hd">
+          <div class="sec-title">Deception Assets & Canary Infrastructure</div>
+          <button class="btn btn-sm btn-danger" onclick="triggerBreachDrill()">⚡ Trigger Authorized Security Drill</button>
+        </div>
+        <div style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:1.25rem;">
+          Active deployed honeypot decoys, canary tripwire files, and cloud metadata emulation endpoints.
+          Accessing these assets triggers deterministic alerts mapped to MITRE ATT&CK techniques.
+        </div>
+
+        <div class="card" style="padding:0;overflow:hidden;margin-bottom:1.5rem;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Decoy Name</th>
+                <th>Type</th>
+                <th>Target Service</th>
+                <th>Token ID</th>
+                <th>Status</th>
+                <th>Tripped Count</th>
+              </tr>
+            </thead>
+            <tbody id="decoys-tbody">
+              <tr><td colspan="6" style="text-align:center;color:var(--text3);padding:2rem;">Loading active decoys...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card" style="padding:1.25rem;">
+          <div class="card-title" style="margin-bottom:0.75rem;">
+            <div class="dot" style="color:var(--accent); background:var(--accent);"></div>
+            Interactive Security Drill Harness
+          </div>
+          <p style="font-size:12px;color:var(--text2);margin-bottom:12px;">
+            Simulate an unauthorized external attacker probing a honeytoken credential. 
+            The central event pipeline will validate the schema, redact passwords, run detection rules, generate an alert, create or correlate an incident, and stream the event across SSE.
+          </p>
+          <div style="display:flex;gap:12px;align-items:center;">
+            <select id="drill-token-select" class="form-input" style="width:260px;">
+              <option value="qtok_stripe_live_prod">Production Stripe API Key</option>
+              <option value="qtok_db_postgres_main">Financial Postgres Cluster</option>
+              <option value="qtok_aws_iam_backup">AWS S3 IAM Metadata Credential</option>
+              <option value="qtok_ssh_bastion_root">Bastion Root SSH Key</option>
+            </select>
+            <input type="text" id="drill-ip-input" class="form-input" value="198.51.100.84" style="width:160px;" placeholder="Attacker IP">
+            <button class="btn btn-sm" onclick="triggerCustomDrill()">Execute Drill Attack</button>
+          </div>
+          <div id="drill-result-box" style="margin-top:12px;font-family:var(--mono);font-size:12px;color:var(--green);display:none;"></div>
         </div>
       </div>
 
@@ -788,19 +904,21 @@ State: H|0⟩ or (HX)|0⟩ per qubit</div>
         </div>
       </div>
 
-      <!-- ═══ REPORT ═══ -->
+      <!-- ═══ REPORT & EXPORT ═══ -->
       <div id="page-report" class="page">
         <div class="sec-hd">
-          <div class="sec-title">Project Report</div>
+          <div class="sec-title">Enterprise Security & Quantum Analytics Export</div>
           <div style="display:flex;gap:8px;">
-            <button class="btn btn-ghost btn-sm" onclick="buildReport()">↺ Regenerate Report</button>
+            <button class="btn btn-sm btn-outline" onclick="exportData('csv')">📥 Export Events CSV</button>
+            <button class="btn btn-sm btn-outline" onclick="exportData('json')">📥 Export Events JSON</button>
+            <button class="btn btn-ghost btn-sm" onclick="buildReport()">↺ Regenerate Client View</button>
             <button class="btn btn-sm" onclick="window.print()">🖨 Print / Save PDF</button>
           </div>
         </div>
 
         <div id="report-body">
           <div style="padding:3rem;text-align:center;color:var(--text3);font-family:var(--mono);font-size:12px;">
-            Click "Regenerate Report" to build a live report from your session data.
+            Click "Regenerate Client View" or export raw telemetry CSV/JSON using the buttons above.
           </div>
         </div>
       </div>
@@ -808,6 +926,36 @@ State: H|0⟩ or (HX)|0⟩ per qubit</div>
     </div><!-- /content -->
   </main>
 </div><!-- /app -->
+
+<!-- LOGIN MODAL -->
+<div id="login-modal" class="modal-backdrop" style="display:none;" onclick="if(event.target===this)closeLoginModal()">
+  <div class="modal-box">
+    <div class="modal-title">
+      <span style="color:var(--accent);">🔐</span> QuantumGuard Enterprise Login
+    </div>
+    <p style="font-size:12px;color:var(--text3);margin-bottom:14px;">
+      Authenticate with your role-based security credentials (Admin, Analyst, or Viewer).
+    </p>
+    <div id="login-error-msg" style="display:none;background:rgba(255,7,58,0.15);border:1px solid rgba(255,7,58,0.3);color:#ff073a;padding:8px 12px;border-radius:4px;font-size:12px;margin-bottom:12px;"></div>
+    
+    <div class="form-group">
+      <label class="form-label">Username</label>
+      <input type="text" id="login-username" class="form-input" placeholder="admin or analyst" value="admin">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Password</label>
+      <input type="password" id="login-password" class="form-input" placeholder="Enter secure password" value="QuantumGuard@Admin2026">
+    </div>
+
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px;">
+      <button class="btn btn-ghost btn-sm" onclick="closeLoginModal()">Cancel</button>
+      <button class="btn btn-sm" id="btn-submit-login" onclick="handleLoginSubmit()">Sign In</button>
+    </div>
+    <div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--border);font-size:11px;color:var(--text3);">
+      Default Dev Creds: <code style="color:var(--accent);">admin / QuantumGuard@Admin2026</code>
+    </div>
+  </div>
+</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script type="module" src="js/app.js"></script>

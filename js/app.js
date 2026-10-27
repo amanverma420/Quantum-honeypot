@@ -1,5 +1,6 @@
 import { AppState } from './state.js';
 import { makeToken, measureToken } from './quantum_engine.js';
+import { API } from './api.js';
 
 const State = AppState;
 let N_QUBITS = State.N_QUBITS;
@@ -49,6 +50,13 @@ function showPage(name, btn) {
     initBB84Data();
     renderBB84Table();
     updateBB84StepDetails();
+  } else if (name === 'events') {
+    loadRealEvents();
+    loadRealIncidents();
+  } else if (name === 'decoys') {
+    loadRealDecoys();
+  } else if (name === 'dashboard') {
+    loadRealOverview();
   }
   
   // Redraw canvas paths
@@ -1539,9 +1547,340 @@ function initApp() {
     termLog([
       `<span class="t-ok">  [✓] AerSimulator backend initialised (statevector method)</span>`,
       `<span class="t-p">  →</span> <span class="t-i">Prep '+': <span class="t-v">H|0⟩ = |+⟩</span></span>`,
-      `<span class="t-p">  →</span> <span class="t-i">Prep 'x': <span class="t-v">H(X|0⟩) = |−⟩</span></span>`,
-      `<span class="t-p">  →</span> <span class="t-i">Decode '+': <span class="t-v">H†=H</span>   Decode 'x': <span class="t-v">H then X</span></span>`,
-      `<span class="t-ok">  [✓] Legit fidelity: 1.0000 · Attacker fidelity: ~0.50</span>`,
+// ── Real Backend API & Server-Sent Events (SSE) Integration ──
+let cachedEvents = [];
+
+function openLoginModal() {
+  const modal = document.getElementById('login-modal');
+  if (modal) modal.style.display = 'flex';
+}
+
+function closeLoginModal() {
+  const modal = document.getElementById('login-modal');
+  if (modal) modal.style.display = 'none';
+  const errBox = document.getElementById('login-error-msg');
+  if (errBox) errBox.style.display = 'none';
+}
+
+async function handleLoginSubmit() {
+  const user = document.getElementById('login-username').value.trim();
+  const pass = document.getElementById('login-password').value.trim();
+  const errBox = document.getElementById('login-error-msg');
+  const btn = document.getElementById('btn-submit-login');
+
+  if (!user || !pass) {
+    if (errBox) { errBox.textContent = 'Please enter both username and password'; errBox.style.display = 'block'; }
+    return;
+  }
+
+  try {
+    btn.textContent = 'Authenticating...';
+    btn.disabled = true;
+    await API.login(user, pass);
+    closeLoginModal();
+    renderAuthUI();
+    loadRealOverview();
+    termLog([`<span class="t-ok">  [✓] Authenticated as '${user}' (${API.currentUser.role.toUpperCase()})</span>`]);
+  } catch (err) {
+    if (errBox) { errBox.textContent = err.message || 'Login failed'; errBox.style.display = 'block'; }
+  } finally {
+    btn.textContent = 'Sign In';
+    btn.disabled = false;
+  }
+}
+
+function handleLogout() {
+  API.logout();
+  renderAuthUI();
+  termLog([`<span class="t-p">  →</span> <span class="t-i">User logged out</span>`]);
+}
+
+function renderAuthUI() {
+  const container = document.getElementById('auth-controls');
+  if (!container) return;
+  if (API.currentUser) {
+    container.innerHTML = `
+      <div style="font-size:12px;font-family:var(--mono);display:flex;align-items:center;gap:8px;">
+        <span class="badge ${API.currentUser.role === 'admin' ? 'br' : 'bb'}">${API.currentUser.role.toUpperCase()}</span>
+        <span style="color:#fff;">${API.currentUser.username}</span>
+        <button class="btn btn-ghost btn-sm" onclick="handleLogout()" style="padding:2px 8px;font-size:11px;">Logout</button>
+      </div>
+    `;
+  } else {
+    container.innerHTML = `<button class="btn btn-sm btn-outline" id="btn-login-modal" onclick="openLoginModal()">Login</button>`;
+  }
+}
+
+async function loadRealOverview() {
+  try {
+    const data = await API.getOverview();
+    const elLegit = document.getElementById('st-legit');
+    const elIntrusions = document.getElementById('st-intrusions');
+    const elFp = document.getElementById('st-fp');
+    const elThreat = document.getElementById('threat-val');
+    const elThreatFill = document.getElementById('threat-fill');
+
+    if (elLegit) elLegit.textContent = data.total_events;
+    if (elIntrusions) elIntrusions.textContent = data.critical_alerts;
+    if (elFp) elFp.textContent = data.open_incidents;
+
+    if (elThreat && elThreatFill) {
+      if (data.critical_alerts > 0) {
+        elThreat.textContent = 'CRITICAL';
+        elThreat.style.color = 'var(--red)';
+        elThreatFill.style.width = '100%';
+        elThreatFill.style.background = 'var(--red)';
+      } else if (data.open_incidents > 0) {
+        elThreat.textContent = 'ELEVATED';
+        elThreat.style.color = 'var(--amber)';
+        elThreatFill.style.width = '60%';
+        elThreatFill.style.background = 'var(--amber)';
+      } else {
+        elThreat.textContent = 'LOW';
+        elThreat.style.color = 'var(--green)';
+        elThreatFill.style.width = '15%';
+        elThreatFill.style.background = 'var(--green)';
+      }
+    }
+  } catch (err) {
+    console.warn('Overview fetch error:', err);
+  }
+}
+
+async function loadRealEvents() {
+  const tbody = document.getElementById('live-events-tbody');
+  const countBadge = document.getElementById('event-count-badge');
+  if (!tbody) return;
+
+  try {
+    const data = await API.getEvents(50);
+    cachedEvents = data.events || [];
+    if (countBadge) countBadge.textContent = `${data.total} Total Events`;
+    renderEventsTable(cachedEvents);
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--red);padding:2rem;">Failed to load events: ${err.message}</td></tr>`;
+  }
+}
+
+function renderEventsTable(events) {
+  const tbody = document.getElementById('live-events-tbody');
+  if (!tbody) return;
+
+  if (!events || events.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:2rem;">No security events recorded yet. Trigger a drill to simulate.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = events.map(e => {
+    const sevBadge = e.severity === 'CRITICAL' ? 'badge-crit' : (e.severity === 'HIGH' ? 'badge-high' : 'badge-open');
+    const timeFormatted = new Date(e.timestamp).toLocaleTimeString();
+    return `
+      <tr>
+        <td style="color:var(--text3);white-space:nowrap;">${timeFormatted}</td>
+        <td><span class="badge bb" style="font-size:10px;">${e.event_type}</span></td>
+        <td><span class="${sevBadge}">${e.severity}</span></td>
+        <td style="color:var(--accent);">${e.source_ip}</td>
+        <td style="color:var(--text2);font-size:11px;">${e.mitre_technique_id}</td>
+        <td style="color:#fff;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${e.message}">${e.message}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function filterEventsTable(query) {
+  if (!query) {
+    renderEventsTable(cachedEvents);
+    return;
+  }
+  const q = query.toLowerCase();
+  const filtered = cachedEvents.filter(e => 
+    (e.source_ip && e.source_ip.toLowerCase().includes(q)) ||
+    (e.message && e.message.toLowerCase().includes(q)) ||
+    (e.event_type && e.event_type.toLowerCase().includes(q)) ||
+    (e.token_id && e.token_id.toLowerCase().includes(q))
+  );
+  renderEventsTable(filtered);
+}
+
+async function loadRealIncidents() {
+  const container = document.getElementById('incidents-container');
+  if (!container) return;
+
+  try {
+    const incidents = await API.getIncidents();
+    if (!incidents || incidents.length === 0) {
+      container.innerHTML = `<div style="text-align:center;color:var(--text3);font-size:12px;padding:2rem;">No active incidents. Threat level normal.</div>`;
+      return;
+    }
+
+    container.innerHTML = incidents.map(inc => {
+      const isResolved = inc.status === 'RESOLVED' || inc.status === 'CLOSED';
+      const statusBadge = isResolved ? 'badge-resolved' : 'badge-open';
+      const sevBadge = inc.severity === 'CRITICAL' ? 'badge-crit' : 'badge-high';
+      return `
+        <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <span class="${statusBadge}">${inc.status}</span>
+            <span class="${sevBadge}">${inc.severity}</span>
+          </div>
+          <div style="font-weight:700;color:#fff;font-size:13px;margin-bottom:4px;">${inc.title}</div>
+          <div style="font-size:11px;color:var(--text2);margin-bottom:8px;">${inc.summary}</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border);padding-top:8px;">
+            <span style="font-size:10px;color:var(--text3);">${new Date(inc.created_at).toLocaleTimeString()}</span>
+            <div style="display:flex;gap:6px;">
+              ${!isResolved ? `
+                <button class="btn btn-ghost btn-sm" onclick="handleIncidentStatus('${inc.id}', 'INVESTIGATING')" style="padding:2px 8px;font-size:10px;">Investigate</button>
+                <button class="btn btn-sm btn-outline" onclick="handleIncidentStatus('${inc.id}', 'RESOLVED')" style="padding:2px 8px;font-size:10px;border-color:var(--green);color:var(--green);">Resolve</button>
+              ` : `
+                <span style="font-size:11px;color:var(--green);">✓ Resolved</span>
+              `}
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (err) {
+    container.innerHTML = `<div style="text-align:center;color:var(--red);font-size:12px;padding:1rem;">Error: ${err.message}</div>`;
+  }
+}
+
+async function handleIncidentStatus(incidentId, status) {
+  try {
+    await API.updateIncidentStatus(incidentId, status, `Manual update by operator to ${status}`);
+    loadRealIncidents();
+    loadRealOverview();
+  } catch (err) {
+    alert(`Failed to update status: ${err.message}. (Ensure you are logged in as Analyst or Admin)`);
+  }
+}
+
+async function loadRealDecoys() {
+  const tbody = document.getElementById('decoys-tbody');
+  if (!tbody) return;
+
+  try {
+    const decoys = await API.getDecoys();
+    if (!decoys || decoys.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:2rem;">No decoys registered</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = decoys.map(d => `
+      <tr>
+        <td style="color:#fff;font-weight:600;">${d.name}</td>
+        <td><span class="badge bb" style="font-size:10px;">${d.decoy_type}</span></td>
+        <td style="color:var(--text2);">${d.target_service}</td>
+        <td style="color:var(--accent);font-family:var(--mono);">${d.token_id}</td>
+        <td><span class="badge-resolved">${d.status}</span></td>
+        <td style="color:${d.access_count > 0 ? 'var(--red)' : 'var(--text3)'};font-weight:700;">${d.access_count}</td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--red);padding:2rem;">Error: ${err.message}</td></tr>`;
+  }
+}
+
+async function triggerBreachDrill() {
+  try {
+    const res = await API.simulateBreach('qtok_stripe_live_prod', '198.51.100.84');
+    termLog([
+      `<span class="t-crit">  [!] SECURITY DRILL TRIGGERED: ${res.alert_generated}</span>`,
+      `<span class="t-i">  → Incident Correlated ID: ${res.incident_id}</span>`
+    ]);
+    showPage('events', document.querySelectorAll('.nav-btn')[1]);
+    loadRealEvents();
+    loadRealIncidents();
+    loadRealOverview();
+  } catch (err) {
+    alert(`Drill failed: ${err.message}. If not logged in, please click Login.`);
+  }
+}
+
+async function triggerCustomDrill() {
+  const select = document.getElementById('drill-token-select');
+  const ipInput = document.getElementById('drill-ip-input');
+  const resultBox = document.getElementById('drill-result-box');
+  const token = select ? select.value : 'qtok_stripe_live_prod';
+  const ip = ipInput ? ipInput.value.trim() : '198.51.100.84';
+
+  try {
+    const res = await API.simulateBreach(token, ip);
+    if (resultBox) {
+      resultBox.style.display = 'block';
+      resultBox.textContent = `[SUCCESS] Event ID: ${res.event_id} | Alert: ${res.alert_generated} | Incident: ${res.incident_id}`;
+    }
+    loadRealEvents();
+    loadRealIncidents();
+    loadRealOverview();
+  } catch (err) {
+    alert(`Drill error: ${err.message}. Please login with analyst/admin account.`);
+  }
+}
+
+function exportData(format) {
+  window.open(`${window.location.origin}/api/v1/soc/reports/export?format=${format}`, '_blank');
+}
+
+function setupSSE() {
+  const sseDot = document.getElementById('sse-dot');
+  const sseLabel = document.getElementById('sse-status-label');
+
+  API.connectSSE(
+    (eventMsg) => {
+      if (eventMsg.type === 'NEW_SECURITY_EVENT') {
+        const ev = eventMsg.event;
+        cachedEvents.unshift({
+          id: ev.id,
+          timestamp: ev.timestamp,
+          event_type: ev.event_type,
+          severity: ev.severity,
+          source_ip: ev.source_ip,
+          mitre_technique_id: ev.mitre.split(' - ')[0],
+          message: ev.message
+        });
+        renderEventsTable(cachedEvents);
+        loadRealOverview();
+        loadRealIncidents();
+
+        // Log into audit terminal
+        termLog([
+          `<span class="t-crit">  [LIVE SSE] ${ev.severity} alert from ${ev.source_ip} (${ev.event_type})</span>`,
+          `<span class="t-i">    ${ev.message}</span>`
+        ]);
+
+        // Flash DB node in Network map
+        const node = document.getElementById('node-db');
+        if (node) {
+          node.classList.add('attacked');
+          setTimeout(() => node.classList.remove('attacked'), 2500);
+        }
+      }
+    },
+    (status) => {
+      if (sseLabel) sseLabel.textContent = `SSE ${status}`;
+      if (sseDot) {
+        sseDot.style.background = status === 'ONLINE' ? 'var(--green)' : 'var(--amber)';
+      }
+    }
+  );
+}
+
+// ── Application Initialization ───────────────────────────────────────────────
+function initApp() {
+  initBB84Data();
+  renderSandboxWires();
+  renderBB84Table();
+  updateBB84StepDetails();
+
+  renderAuthUI();
+  loadRealOverview();
+  setupSSE();
+
+  setTimeout(() => {
+    termLog([
+      `<span class="t-p">quantum@guard:~$ </span><span class="t-i">Connected to QuantumGuard Enterprise API</span>`,
+      `<span class="t-ok">  [✓] Live Server-Sent Events (SSE) telemetry armed</span>`,
+      `<span class="t-ok">  [✓] Database models, persistent incidents, and SIEM pipeline active</span>`,
+      `<span class="t-p">  →</span> <span class="t-i">Default Admin user ready: <span class="t-v">admin</span></span>`
     ]);
   }, 200);
 
@@ -1549,7 +1888,6 @@ function initApp() {
   drawNetworkPaths();
   window.addEventListener('resize', drawNetworkPaths);
   
-  // Highlight PostgreSQL DB node as starting node
   const activeNode = document.getElementById('node-db');
   if (activeNode) activeNode.classList.add('active');
 }
@@ -1579,7 +1917,20 @@ const AppBindings = {
   toggleEveIntercept,
   showTab,
   runAnalytics,
-  buildReport
+  buildReport,
+  openLoginModal,
+  closeLoginModal,
+  handleLoginSubmit,
+  handleLogout,
+  loadRealEvents,
+  filterEventsTable,
+  loadRealIncidents,
+  handleIncidentStatus,
+  loadRealDecoys,
+  triggerBreachDrill,
+  triggerCustomDrill,
+  exportData
 };
 Object.assign(window, AppBindings);
 window.QuantumGuard = AppBindings;
+

@@ -1,10 +1,18 @@
 {
   "name": "quantum-honeypot",
-  "version": "1.0.0",
+  "version": "2.0.0",
+  "description": "QuantumGuard – Quantum Honeypot Intrusion Detection System (v2.0)",
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "echo 'No build step required for static assets'",
-    "preview": "python -m http.server 5000"
+    "dev": "python -m http.server 8000",
+    "preview": "python -m http.server 8000",
+    "simulate": "py -3.12 main.py simulate",
+    "status": "py -3.12 main.py status",
+    "deploy-traps": "py -3.12 main.py run-traps",
+    "setup": "py -3.12 -m pip install -r requirements.txt"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

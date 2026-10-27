@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: quantumguard_app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - DATABASE_URL=postgresql://quantum_user:quantum_sec_pass_2026@postgres:5432/quantumguard_db
+      - JWT_SECRET_KEY=quantumguard-enterprise-super-secret-key-32chars!!
+      - INITIAL_ADMIN_PASSWORD=QuantumGuard@Admin2026
+      - ALLOWED_ORIGINS=http://localhost:8000,http://127.0.0.1:8000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - app_logs:/app/logs
+      - app_assets:/app/decoy_assets
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: quantumguard_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: quantum_user
+      POSTGRES_PASSWORD: quantum_sec_pass_2026
+      POSTGRES_DB: quantumguard_db
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quantum_user -d quantumguard_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Database is isolated to internal docker network and not exposed to public host ports
+
+volumes:
+  pgdata:
+  app_logs:
+  app_assets:
