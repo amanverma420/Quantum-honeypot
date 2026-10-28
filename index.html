@@ -293,18 +293,26 @@
             <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">
               Eavesdropping creates non-orthogonal state collapse, causing Quantum Bit Error Rate (QBER) to reach $\approx 25\%$.
             </p>
-            <div style="display:flex;gap:12px;align-items:center;margin-bottom:14px;">
-              <label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;">
+            <div style="display:flex;gap:12px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
+              <label style="font-size:13px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
                 <input type="checkbox" id="bb84-eve-check"> Eavesdropper (Eve) Intercepting
               </label>
-              <label for="bb84-bits">Signals</label>
-              <input id="bb84-bits" type="number" min="10" max="50000" value="512" class="form-control" style="width:100px;">
-              <label for="bb84-eve-probability">Intercept <output id="bb84-eve-value">1.00</output></label>
-              <input id="bb84-eve-probability" type="range" min="0" max="1" step="0.05" value="1">
-              <label for="bb84-noise">Noise <output id="bb84-noise-value">0.00</output></label>
-              <input id="bb84-noise" type="range" min="0" max="0.5" step="0.01" value="0">
-              <label for="bb84-seed">Seed</label>
-              <input id="bb84-seed" type="number" value="84" class="form-control" style="width:80px;">
+              <div style="display:inline-flex;align-items:center;gap:6px;">
+                <label for="bb84-bits" style="font-size:12px;">Signals</label>
+                <input id="bb84-bits" type="number" min="10" max="50000" value="512" class="form-control" style="width:75px;">
+              </div>
+              <div style="display:inline-flex;align-items:center;gap:6px;">
+                <label for="bb84-eve-probability" style="font-size:12px;">Intercept <output id="bb84-eve-value">1.00</output></label>
+                <input id="bb84-eve-probability" type="range" min="0" max="1" step="0.05" value="1" style="width:80px;">
+              </div>
+              <div style="display:inline-flex;align-items:center;gap:6px;">
+                <label for="bb84-noise" style="font-size:12px;">Noise <output id="bb84-noise-value">0.00</output></label>
+                <input id="bb84-noise" type="range" min="0" max="0.5" step="0.01" value="0" style="width:80px;">
+              </div>
+              <div style="display:inline-flex;align-items:center;gap:6px;">
+                <label for="bb84-seed" style="font-size:12px;">Seed</label>
+                <input id="bb84-seed" type="number" value="84" class="form-control" style="width:65px;">
+              </div>
               <button class="btn btn-secondary btn-sm" onclick="runBB84Test()">Run BB84</button>
             </div>
             <div id="bb84-result" style="background:var(--bg-input);padding:12px;border-radius:var(--radius-sm);font-family:var(--font-mono);font-size:12px;">
@@ -428,27 +436,6 @@
         </div>
       </div>
 
-      <!-- Markdown Documentation Viewer -->
-      <div class="card">
-        <div class="card-header">
-          <h3>Project Documentation &amp; Research Paper</h3>
-          <span id="markdown-viewer-title" style="font-size:12px;color:var(--text-muted);font-family:var(--font-mono);"></span>
-        </div>
-        <!-- Doc Tabs -->
-        <div class="doc-tabs-bar">
-          <button class="doc-tab active" data-doc="README" onclick="loadMarkdownDoc('README')">README</button>
-          <button class="doc-tab" data-doc="PAPER" onclick="loadMarkdownDoc('PAPER')">📄 Research Paper</button>
-          <button class="doc-tab" data-doc="ARCHITECTURE" onclick="loadMarkdownDoc('ARCHITECTURE')">Architecture</button>
-          <button class="doc-tab" data-doc="QUANTUM_CONCEPTS" onclick="loadMarkdownDoc('QUANTUM_CONCEPTS')">Quantum Concepts</button>
-          <button class="doc-tab" data-doc="SECURITY" onclick="loadMarkdownDoc('SECURITY')">Security</button>
-          <button class="doc-tab" data-doc="DEPLOYMENT" onclick="loadMarkdownDoc('DEPLOYMENT')">Deployment</button>
-          <button class="doc-tab" data-doc="PRESENTATION" onclick="loadMarkdownDoc('PRESENTATION')">🎤 Presentation Script</button>
-          <button class="doc-tab" data-doc="HOW_TO_RUN" onclick="loadMarkdownDoc('HOW_TO_RUN')">⚡ Run Guide</button>
-        </div>
-        <div id="markdown-viewer-content" style="padding:24px;max-height:620px;overflow-y:auto;">
-          <div style="padding:2rem;text-align:center;color:var(--text-muted);">Select a document tab above to view it.</div>
-        </div>
-      </div>
     </section>
 
   </main>

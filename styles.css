@@ -449,13 +449,19 @@ table.data-table tr:hover td {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 12px;
   margin-bottom: 14px;
 }
 
 .lab-controls .form-control {
   width: auto;
-  min-width: 90px;
+  min-width: 80px;
+}
+
+input[type="range"] {
+  accent-color: var(--accent);
+  cursor: pointer;
+  vertical-align: middle;
 }
 
 .experiment-result {
