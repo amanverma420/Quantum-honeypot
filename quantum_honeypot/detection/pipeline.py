@@ -5,6 +5,8 @@ import re
 import json
 import time
 import asyncio
+import logging
+import hashlib
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional, List, Tuple
 from sqlalchemy.orm import Session
@@ -15,22 +17,28 @@ from ..schemas.models import SecurityEventCreate
 from .siem_logger import log_security_event
 
 # Real-time event subscribers for Server-Sent Events (SSE)
-_event_subscribers: List[asyncio.Queue] = []
+_event_subscribers: List[Tuple[asyncio.AbstractEventLoop, asyncio.Queue]] = []
+_logger = logging.getLogger(__name__)
 
 def register_sse_subscriber(queue: asyncio.Queue):
-    _event_subscribers.append(queue)
+    _event_subscribers.append((asyncio.get_running_loop(), queue))
 
 def unregister_sse_subscriber(queue: asyncio.Queue):
-    if queue in _event_subscribers:
-        _event_subscribers.remove(queue)
+    _event_subscribers[:] = [item for item in _event_subscribers if item[1] is not queue]
+
+def _offer_sse_event(queue: asyncio.Queue, event_dict: Dict[str, Any]) -> None:
+    try:
+        queue.put_nowait(event_dict)
+    except asyncio.QueueFull:
+        _logger.warning("Dropping an SSE update because a subscriber queue is full.")
 
 def broadcast_live_event(event_dict: Dict[str, Any]):
-    """Broadcast an event non-blockingly to all connected SSE clients."""
-    for q in list(_event_subscribers):
+    """Schedule an event on each subscriber's owning loop, including worker-thread callers."""
+    for loop, queue in list(_event_subscribers):
         try:
-            q.put_nowait(event_dict)
-        except Exception:
-            pass
+            loop.call_soon_threadsafe(_offer_sse_event, queue, event_dict)
+        except RuntimeError:
+            unregister_sse_subscriber(queue)
 
 class DetectionRule:
     def __init__(self, rule_id: str, name: str, severity: str, mitre_id: str, mitre_name: str):
@@ -164,25 +172,47 @@ def sanitize_evidence(evidence: Dict[str, Any]) -> Dict[str, Any]:
 
 class EventIngestionPipeline:
     def __init__(self):
-        self._last_event_cache: Dict[str, float] = {}
+        self._recent_event_cache: Dict[str, Tuple[float, str]] = {}
 
     def ingest(self, event_create: SecurityEventCreate, db: Session) -> Tuple[SecurityEvent, Optional[Alert]]:
         """Validate, redact, persist, run detection rules, and correlate incident."""
         source_ip = event_create.source_ip.split()[0] # Sanitize IP
         evidence = sanitize_evidence(event_create.evidence)
-        
-        # Deduplication check: drop identical event from same IP within 1.0 second
-        cache_key = f"{source_ip}:{event_create.event_type}:{event_create.token_id}"
-        now_ts = time.time()
-        if cache_key in self._last_event_cache and (now_ts - self._last_event_cache[cache_key]) < 1.0:
-            pass # Keep recording or throttled
-
-        self._last_event_cache[cache_key] = now_ts
+        signature = json.dumps(
+            {
+                "event_type": event_create.event_type,
+                "severity": event_create.severity,
+                "message": event_create.message,
+                "source_ip": source_ip,
+                "sensor_id": event_create.sensor_id,
+                "decoy_id": event_create.decoy_id,
+                "token_id": event_create.token_id,
+                "evidence": evidence,
+            },
+            sort_keys=True,
+            default=str,
+        )
+        cache_key = hashlib.sha256(signature.encode("utf-8")).hexdigest()
+        now_ts = time.monotonic()
+        self._recent_event_cache = {
+            key: value for key, value in self._recent_event_cache.items()
+            if now_ts - value[0] < 1.0
+        }
+        cached = self._recent_event_cache.get(cache_key)
+        if cached and now_ts - cached[0] < 1.0:
+            cached_event = db.query(SecurityEvent).filter(SecurityEvent.id == cached[1]).first()
+            if cached_event is not None:
+                cached_alert = db.query(Alert).filter(Alert.triggering_event_id == cached_event.id).first()
+                return cached_event, cached_alert
 
         # Determine MITRE technique mapping
         mitre_id = "T1005"
         mitre_name = "Data from Local System"
-        if event_create.event_type in ("api_key", "ssh_key", "database"):
+        request_path = evidence.get("path") or evidence.get("requested_path") or ""
+        if "metadata" in request_path or "security-credentials" in request_path:
+            mitre_id = "T1552.005"
+            mitre_name = "Unsecured Credentials: Cloud Instance Metadata API"
+        elif event_create.event_type in ("api_key", "ssh_key", "database"):
             mitre_id = "T1552.001"
             mitre_name = "Unsecured Credentials: In Files"
         elif event_create.event_type == "aws_iam":
@@ -254,7 +284,15 @@ class EventIngestionPipeline:
                     status="OPEN",
                     assigned_to="security_analyst",
                     summary=f"Automated incident triggered by {generated_alert.rule_name} targeting honeypot assets.",
-                    evidence_json={"primary_source_ip": source_ip, "initial_event_id": db_event.id}
+                    evidence_json={
+                        "primary_source_ip": source_ip,
+                        "initial_event_id": db_event.id,
+                        **(
+                            {"demo_run_id": evidence["demo_run_id"]}
+                            if evidence.get("synthetic_demo") and evidence.get("demo_run_id")
+                            else {}
+                        ),
+                    }
                 )
                 db.add(incident)
                 db.flush()
@@ -262,8 +300,23 @@ class EventIngestionPipeline:
             generated_alert.incident_id = incident.id
             db_event.is_correlated = True
 
+        if evidence.get("synthetic_demo"):
+            db.add(AuditLog(
+                actor_username=str(evidence.get("operator", "unknown")),
+                action="SYNTHETIC_DEMO_EVENT_INGESTED",
+                entity_type="SecurityEvent",
+                entity_id=db_event.id,
+                details_json={
+                    "demo_run_id": evidence.get("demo_run_id"),
+                    "scenario": evidence.get("scenario"),
+                    "alert_id": generated_alert.id if generated_alert else None,
+                    "incident_id": generated_alert.incident_id if generated_alert else None,
+                },
+            ))
+
         db.commit()
         db.refresh(db_event)
+        self._recent_event_cache[cache_key] = (time.monotonic(), db_event.id)
 
         # Write to backward-compatible JSONL log
         log_security_event(

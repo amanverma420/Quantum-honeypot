@@ -1,13 +1,16 @@
 """SOC Management, Real-time Telemetry, Incidents, and SSE Streaming API."""
 
 import io
+import os
 import csv
 import json
 import asyncio
+import ipaddress
+import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
+from fastapi.responses import StreamingResponse, PlainTextResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 
@@ -18,13 +21,26 @@ from ..schemas.models import (
     IncidentStatusUpdate, AnalystNoteCreate, AnalystNoteResponse, DecoyResponse,
     SOCStatsResponse, SecurityEventCreate
 )
-from ..security.auth import get_current_user, require_analyst, require_viewer, require_admin
+from ..security.auth import get_current_user, require_analyst, require_viewer, require_admin, decode_access_token
 from ..detection.pipeline import PIPELINE, register_sse_subscriber, unregister_sse_subscriber
+
+# Root directory of the project (for serving markdown docs)
+_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_ALLOWED_DOCS = {
+    "README": "README.md",
+    "ARCHITECTURE": "ARCHITECTURE.md",
+    "QUANTUM_CONCEPTS": "QUANTUM_CONCEPTS.md",
+    "SECURITY": "SECURITY.md",
+    "DEPLOYMENT": "DEPLOYMENT.md",
+}
 
 router = APIRouter(prefix="/api/v1/soc", tags=["SOC Dashboard & Telemetry"])
 
 @router.get("/overview", response_model=SOCStatsResponse)
-def get_soc_overview(db: Session = Depends(get_db)):
+def get_soc_overview(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_viewer),
+):
     """Retrieve operational metrics and real-time statistics backed by database records."""
     total_events = db.query(SecurityEvent).count()
     critical_alerts = db.query(Alert).filter(Alert.severity.in_(["CRITICAL", "HIGH"])).count()
@@ -61,7 +77,8 @@ def list_security_events(
     event_type: Optional[str] = None,
     source_ip: Optional[str] = None,
     search: Optional[str] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: User = Depends(require_viewer),
 ):
     """Retrieve paginated, filtered security events with sanitized metadata."""
     query = db.query(SecurityEvent)
@@ -105,8 +122,9 @@ def list_security_events(
 @router.get("/alerts")
 def list_alerts(
     status: Optional[str] = None,
-    limit: int = 50,
-    db: Session = Depends(get_db)
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_viewer),
 ):
     """List detection alerts and trigger status."""
     query = db.query(Alert)
@@ -147,8 +165,9 @@ def acknowledge_alert(
 @router.get("/incidents")
 def list_incidents(
     status: Optional[str] = None,
-    limit: int = 50,
-    db: Session = Depends(get_db)
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_viewer),
 ):
     """List active and resolved incidents with analyst notes."""
     query = db.query(Incident)
@@ -245,7 +264,10 @@ def add_analyst_note(
     }
 
 @router.get("/decoys")
-def list_decoys(db: Session = Depends(get_db)):
+def list_decoys(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_viewer),
+):
     """List registered deception honeytokens and canary sensors."""
     decoys = db.query(Decoy).all()
     return [
@@ -265,41 +287,191 @@ def list_decoys(db: Session = Depends(get_db)):
 @router.post("/decoys/simulate-breach")
 def simulate_decoy_breach(
     token_id: str = Query("qtok_stripe_live_prod"),
-    source_ip: str = Query("192.168.1.105"),
+    source_ip: str = Query("198.51.100.77"),
+    scenario: str = Query("honeytoken", pattern="^(honeytoken|api_recon|canary)$"),
+    demo_run_id: Optional[str] = None,
     db: Session = Depends(get_db),
     user: User = Depends(require_analyst)
 ):
-    """Interactive endpoint to trigger an authorized synthetic test event for verification."""
+    """Run a bounded synthetic scenario through the production event pipeline."""
+    try:
+        source_ip = str(ipaddress.ip_address(source_ip))
+        demo_run_id = str(uuid.UUID(demo_run_id)) if demo_run_id else str(uuid.uuid4())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid source IP or demo run identifier") from exc
+
+    existing_events = db.query(SecurityEvent).filter(
+        SecurityEvent.sensor_id.in_(["demo-honeytoken", "demo-api_recon", "demo-canary"])
+    ).all()
+    existing_event = next(
+        (
+            event for event in existing_events
+            if (event.evidence_json or {}).get("demo_run_id") == demo_run_id
+        ),
+        None,
+    )
+    if existing_event:
+        if (existing_event.evidence_json or {}).get("scenario") != scenario:
+            raise HTTPException(status_code=409, detail="This demo run ID is already bound to another scenario.")
+        prior_alert = db.query(Alert).filter(Alert.triggering_event_id == existing_event.id).first()
+        return {
+            "status": "SUCCESS",
+            "synthetic": True,
+            "scenario": scenario,
+            "demo_run_id": demo_run_id,
+            "event_id": existing_event.id,
+            "alert_generated": prior_alert.title if prior_alert else None,
+            "incident_id": prior_alert.incident_id if prior_alert else None,
+            "duplicate": True,
+        }
+
     decoy = db.query(Decoy).filter(Decoy.token_id == token_id).first()
-    service = decoy.target_service if decoy else "Simulated Decoy Gateway"
-    
+    if scenario == "honeytoken":
+        event_type = decoy.decoy_type if decoy else "api_key"
+        service = decoy.target_service if decoy else "Synthetic credential canary"
+        evidence = {"target_service": service}
+        event_message = f"Synthetic demo: honeytoken {token_id} accessed from {source_ip}."
+        severity = "CRITICAL"
+        event_token_id = token_id
+    elif scenario == "api_recon":
+        event_type = "scan"
+        service = "Isolated decoy API metadata route"
+        evidence = {"path": "/v1/metadata/security-credentials", "target_service": service}
+        event_message = f"Synthetic demo: reconnaissance request against {service} from {source_ip}."
+        severity = "HIGH"
+        event_token_id = None
+    else:
+        event_type = "canary_file"
+        service = "Synthetic filesystem canary"
+        evidence = {"asset": "demo-canary.txt", "target_service": service}
+        event_message = f"Synthetic demo: canary asset access from {source_ip}."
+        severity = "CRITICAL"
+        event_token_id = f"demo_canary_{demo_run_id[:8]}"
+
     event_create = SecurityEventCreate(
-        event_type=decoy.decoy_type if decoy else "api_key",
-        severity="CRITICAL",
-        message=f"Manual operator verification breach triggered against '{service}' from {source_ip}.",
+        event_type=event_type,
+        severity=severity,
+        message=event_message,
         source_ip=source_ip,
-        sensor_id="manual-test-harness",
-        token_id=token_id,
-        evidence={"authorized_drill": True, "operator": user.username, "target_service": service},
-        quantum_telemetry={"fidelity": 0.5211, "threshold": 0.85, "is_attack": True}
+        sensor_id=f"demo-{scenario}",
+        decoy_id=decoy.id if scenario == "honeytoken" and decoy else None,
+        token_id=event_token_id,
+        evidence={
+            **evidence,
+            "synthetic_demo": True,
+            "demo_run_id": demo_run_id,
+            "scenario": scenario,
+            "operator": user.username,
+        },
     )
     db_event, alert = PIPELINE.ingest(event_create, db)
     return {
         "status": "SUCCESS",
+        "synthetic": True,
+        "duplicate": False,
+        "scenario": scenario,
+        "demo_run_id": demo_run_id,
         "event_id": db_event.id,
         "alert_generated": alert.title if alert else None,
         "incident_id": alert.incident_id if alert else None
     }
 
+@router.delete("/demo/runs/{demo_run_id}")
+def reset_demo_run(
+    demo_run_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_analyst),
+):
+    """Remove only event, alert, and empty incident records owned by this demo run."""
+    run_id = str(demo_run_id)
+    demo_events = db.query(SecurityEvent).filter(
+        SecurityEvent.sensor_id.in_(["demo-honeytoken", "demo-api_recon", "demo-canary"])
+    ).all()
+    removed_event_ids = []
+    related_incident_ids = set()
+    removed_alerts = 0
+
+    for event in demo_events:
+        if (event.evidence_json or {}).get("demo_run_id") != run_id:
+            continue
+        alerts = db.query(Alert).filter(Alert.triggering_event_id == event.id).all()
+        for alert in alerts:
+            if alert.incident_id:
+                related_incident_ids.add(alert.incident_id)
+            db.delete(alert)
+            removed_alerts += 1
+        removed_event_ids.append(event.id)
+        db.delete(event)
+
+    removed_incidents = 0
+    for incident_id in related_incident_ids:
+        incident = db.query(Incident).filter(Incident.id == incident_id).first()
+        if (
+            incident
+            and (incident.evidence_json or {}).get("demo_run_id") == run_id
+            and db.query(Alert).filter(Alert.incident_id == incident_id).count() == 0
+            and db.query(AnalystNote).filter(AnalystNote.incident_id == incident_id).count() == 0
+        ):
+            db.delete(incident)
+            removed_incidents += 1
+
+    db.add(AuditLog(
+        actor_username=user.username,
+        action="SYNTHETIC_DEMO_RUN_RESET",
+        entity_type="DemoRun",
+        entity_id=run_id,
+        details_json={
+            "events_removed": len(removed_event_ids),
+            "alerts_removed": removed_alerts,
+            "empty_incidents_removed": removed_incidents,
+        },
+    ))
+    db.commit()
+    return {
+        "status": "SUCCESS",
+        "demo_run_id": run_id,
+        "events_removed": len(removed_event_ids),
+        "alerts_removed": removed_alerts,
+        "empty_incidents_removed": removed_incidents,
+        "audit_preserved": True,
+    }
+
 @router.get("/reports/export")
 def export_security_report(
     format: str = Query("csv", pattern="^(csv|json)$"),
+    token: Optional[str] = Query(None, description="Bearer token for browser-initiated downloads"),
     db: Session = Depends(get_db),
-    user: User = Depends(require_viewer)
+    request: Request = None,
+    authenticated_user: User = Depends(require_viewer),
 ):
-    """Export sanitized security events and incidents in CSV or JSON format."""
-    events = db.query(SecurityEvent).order_by(desc(SecurityEvent.timestamp)).limit(500).all()
+    """Export sanitized security events in CSV or JSON.
     
+    Accepts authentication via:
+    - Standard Authorization: Bearer <token> header
+    - Bearer authorization header (query-string tokens are not accepted)
+    """
+    # Resolve user from header or query-param token
+    resolved_user = None
+    auth_header = request.headers.get("Authorization", "") if request else ""
+    bearer_token = None
+    if auth_header.startswith("Bearer "):
+        bearer_token = auth_header[7:]
+    if bearer_token:
+        payload = decode_access_token(bearer_token)
+        if payload and "sub" in payload:
+            resolved_user = db.query(User).filter(
+                User.username == payload["sub"], User.is_active == True
+            ).first()
+
+    if not resolved_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+
+    events = db.query(SecurityEvent).order_by(desc(SecurityEvent.timestamp)).limit(500).all()
+
     if format == "json":
         data = [
             {
@@ -314,7 +486,11 @@ def export_security_report(
             }
             for e in events
         ]
-        return data
+        return StreamingResponse(
+            iter([json.dumps(data, indent=2)]),
+            media_type="application/json",
+            headers={"Content-Disposition": "attachment; filename=quantumguard_security_export.json"}
+        )
 
     # CSV Export
     output = io.StringIO()
@@ -326,10 +502,10 @@ def export_security_report(
             e.timestamp.isoformat(),
             e.event_type,
             e.severity,
-            e.source_ip,
+            e.source_ip or "",
             e.token_id or "",
-            f"{e.mitre_technique_id} - {e.mitre_technique_name}",
-            e.message
+            f"{e.mitre_technique_id or ''} - {e.mitre_technique_name or ''}",
+            e.message or ""
         ])
     output.seek(0)
     return StreamingResponse(
@@ -338,8 +514,32 @@ def export_security_report(
         headers={"Content-Disposition": "attachment; filename=quantumguard_security_export.csv"}
     )
 
+
+@router.get("/docs/{doc_name}")
+def get_project_doc(
+    doc_name: str,
+):
+    """Serve project markdown documentation files for in-browser rendering."""
+    filename = _ALLOWED_DOCS.get(doc_name.upper())
+    if not filename:
+        raise HTTPException(status_code=404, detail=f"Document '{doc_name}' not found. Available: {list(_ALLOWED_DOCS.keys())}")
+
+    doc_path = os.path.join(_ROOT_DIR, filename)
+    if not os.path.exists(doc_path):
+        raise HTTPException(status_code=404, detail=f"File '{filename}' not found on disk")
+
+    with open(doc_path, "rb") as f:
+        raw_bytes = f.read()
+
+    # Use StreamingResponse to avoid Content-Length mismatch with multibyte chars
+    return StreamingResponse(
+        iter([raw_bytes]),
+        media_type="text/plain; charset=utf-8",
+        headers={"Cache-Control": "no-cache"}
+    )
+
 @router.get("/stream")
-async def sse_event_stream():
+async def sse_event_stream(user: User = Depends(get_current_user)):
     """Server-Sent Events (SSE) endpoint broadcasting live security events to the dashboard."""
     queue = asyncio.Queue(maxsize=100)
     register_sse_subscriber(queue)

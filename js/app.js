@@ -1,1588 +1,118 @@
-import { AppState } from './state.js';
-import { makeToken, measureToken } from './quantum_engine.js';
-import { API } from './api.js';
+/**
+ * QuantumGuard Enterprise Web Application
+ * Real-time SOC Dashboard, Threat Telemetry, and Interactive Quantum Lab.
+ */
 
-const State = AppState;
-let N_QUBITS = State.N_QUBITS;
-let THRESHOLD = State.THRESHOLD;
-let activeResource = State.activeResource;
+// Global State
+let currentToken = localStorage.getItem('qg_token') || null;
+let currentUser = JSON.parse(localStorage.getItem('qg_user') || 'null');
+let sseConnection = null;
+let activeDemoRunId = null;
+let cachedThreatEvents = [];
+let qubitTheta = 1.5707963;
+let qubitPhi = 0.0;
 
-const session = State.session;
-let logEntries = State.logEntries;
-const simResults = State.simResults;
-const charts = State.charts;
-let lastAnalyticsData = State.lastAnalyticsData;
+const API_BASE = window.location.origin;
 
-// Sandbox Tab state variables
-const sandboxCircuitState = [
-  { prepGate: null, measureBasis: '+' }, // q0
-  { prepGate: 'X', measureBasis: '+' },  // q1
-  { prepGate: 'H', measureBasis: 'x' },  // q2
-  { prepGate: 'XH', measureBasis: 'x' }  // q3
-];
-let sandboxNoise = 0.0;
-let sandboxAngle = 0;
-
-// BB84 Walkthrough state variables
-const bb84State = {
-  step: 0,
-  aliceBits: [],
-  aliceBases: [],
-  bobBases: [],
-  eveBases: [],
-  bobBits: [],
-  eveIntercept: false
-};
-
-const BB84_STEPS_META = State.BB84_STEPS_META;
-
-const RESOURCE_META = State.RESOURCE_META;
-
-// ── 1. Page Switching & Sidebar Cfg ───────────────────────────────────────────
-function showPage(name, btn) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('page-' + name).classList.add('active');
-  btn.classList.add('active');
-  
-  if (name === 'sandbox') {
-    renderSandboxWires();
-    initBB84Data();
-    renderBB84Table();
-    updateBB84StepDetails();
-  } else if (name === 'events') {
-    loadRealEvents();
-    loadRealIncidents();
-  } else if (name === 'decoys') {
-    loadRealDecoys();
-  } else if (name === 'dashboard') {
-    loadRealOverview();
+function getAuthHeaders() {
+  const headers = { 'Content-Type': 'application/json' };
+  if (currentToken) {
+    headers['Authorization'] = `Bearer ${currentToken}`;
   }
-  
-  // Redraw canvas paths
-  setTimeout(drawNetworkPaths, 100);
+  return headers;
 }
 
-function switchResource(id) {
-  activeResource = id;
-  document.querySelectorAll('.resource-item').forEach(el => el.classList.remove('active'));
-  document.getElementById('res-' + id).classList.add('active');
-
-  ['db', 'api', 's3'].forEach(r => {
-    document.getElementById('panel-' + r).style.display = r === id ? '' : 'none';
-  });
-
-  const meta = RESOURCE_META[id];
-  document.getElementById('resource-panel-title').textContent = meta.name;
-  document.getElementById('status-resource-label').textContent = `${meta.label} · ACTIVE`;
-  termLog([`<span class="t-p">  →</span> <span class="t-i">Switched active honeypot: <span class="t-v">${meta.label}</span></span>`]);
-  
-  // Highlight active node in network map
-  document.querySelectorAll('.net-node').forEach(node => {
-    node.classList.remove('active', 'attacked');
-  });
-  const node = document.getElementById(meta.nodeId);
-  if (node) node.classList.add('active');
+function escapeHTML(value) {
+  return String(value ?? '').replace(/[&<>"']/g, character => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[character]);
 }
 
-function updateQubitCfg(v) {
-  N_QUBITS = parseInt(v, 10);
-  document.getElementById('qubit-lbl').textContent = v;
-  document.querySelectorAll('[id$="-qlayer"]').forEach(el => {
-    el.textContent = `⟨ψ| ${v} tripwire qubits active`;
-  });
-  renderQbGrid([]);
-}
-
-function updateThreshCfg(v) {
-  THRESHOLD = v / 100;
-  document.getElementById('thresh-lbl').textContent = THRESHOLD.toFixed(2);
-  updateConfusionMatrix();
-  renderROCChart();
-}
-
-function renderQbGrid(basisKey, alertIdxs = []) {
-  const grid = document.getElementById('qb-grid');
-  if (!grid) return;
-  grid.innerHTML = '';
-  const show = basisKey.length > 0;
-
-  for (let i = 0; i < N_QUBITS; i++) {
-    const cell = document.createElement('div');
-    cell.className = 'qb-cell';
-    if (show) {
-      if (alertIdxs.includes(i)) {
-        cell.className += ' alarm';
-        cell.textContent = '!';
-      } else if (basisKey[i] === '+') {
-        cell.className += ' plus';
-        cell.textContent = '|+⟩';
-      } else {
-        cell.className += ' cross';
-        cell.textContent = '|−⟩';
-      }
-    } else {
-      cell.textContent = `q${i}`;
-    }
-    grid.appendChild(cell);
-  }
-}
-
-// ── 2. Threat Map Layout & Canvas Animation ─────────────────────────────────────
-let pulseAnim = null;
-
-function drawNetworkPaths() {
-  const canvas = document.getElementById('net-canvas');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const container = document.getElementById('net-container');
-  
-  canvas.width = container.clientWidth;
-  canvas.height = container.clientHeight;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  
-  const client = document.getElementById('node-client');
-  const gateway = document.getElementById('node-gateway');
-  const db = document.getElementById('node-db');
-  const api = document.getElementById('node-vault');
-  const s3 = document.getElementById('node-s3');
-  
-  if (!client || !gateway || !db || !api || !s3) return;
-  
-  const getCenter = (el) => ({
-    x: el.offsetLeft + el.clientWidth / 2,
-    y: el.offsetTop + el.clientHeight / 2
-  });
-  
-  const pClient = getCenter(client);
-  const pGateway = getCenter(gateway);
-  const pDb = getCenter(db);
-  const pApi = getCenter(api);
-  const pS3 = getCenter(s3);
-  
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = 'rgba(0, 242, 254, 0.08)';
-  ctx.shadowBlur = 0;
-  
-  const drawLine = (from, to) => {
-    ctx.beginPath();
-    ctx.moveTo(from.x, from.y);
-    ctx.lineTo(to.x, to.y);
-    ctx.stroke();
-  };
-  
-  drawLine(pClient, pGateway);
-  drawLine(pGateway, pDb);
-  drawLine(pGateway, pApi);
-  drawLine(pGateway, pS3);
-}
-
-function animateTracePulse(targetId, isAlert) {
-  const canvas = document.getElementById('net-canvas');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  
-  const client = document.getElementById('node-client');
-  const gateway = document.getElementById('node-gateway');
-  const target = document.getElementById(targetId);
-  if (!client || !gateway || !target) return;
-  
-  const getCenter = (el) => ({
-    x: el.offsetLeft + el.clientWidth / 2,
-    y: el.offsetTop + el.clientHeight / 2
-  });
-  
-  const pClient = getCenter(client);
-  const pGateway = getCenter(gateway);
-  const pTarget = getCenter(target);
-  
-  let progress = 0;
-  const speed = 0.035;
-  
-  // Clear other active alert states
-  document.querySelectorAll('.net-node').forEach(node => {
-    if (node.id !== targetId && node.id !== 'node-client' && node.id !== 'node-gateway') {
-      node.classList.remove('attacked', 'active');
-    }
-  });
-  
-  if (pulseAnim) cancelAnimationFrame(pulseAnim);
-  
-  const color = isAlert ? '#ff073a' : '#39ff14';
-  
-  function animate() {
-    progress += speed;
-    if (progress > 2) {
-      if (isAlert) {
-        target.classList.add('attacked');
-      } else {
-        target.classList.add('active');
-      }
-      drawNetworkPaths();
-      return;
-    }
-    
-    drawNetworkPaths();
-    
-    // Draw moving glowing dot
-    ctx.beginPath();
-    let currentX, currentY;
-    if (progress <= 1) {
-      currentX = pClient.x + (pGateway.x - pClient.x) * progress;
-      currentY = pClient.y + (pGateway.y - pClient.y) * progress;
-    } else {
-      const p2 = progress - 1;
-      currentX = pGateway.x + (pTarget.x - pGateway.x) * p2;
-      currentY = pGateway.y + (pTarget.y - pGateway.y) * p2;
-    }
-    
-    ctx.arc(currentX, currentY, 6, 0, 2 * Math.PI);
-    ctx.fillStyle = color;
-    ctx.shadowBlur = 15;
-    ctx.shadowColor = color;
-    ctx.fill();
-    ctx.shadowBlur = 0; 
-    
-    pulseAnim = requestAnimationFrame(animate);
-  }
-  
-  animate();
-}
-
-// ── 3. Stats & Log Handling ───────────────────────────────────────────────────
-function updateThreat() {
-  const atkCount = session.attackFids.length;
-  const caught = session.attackFids.filter(f => f < THRESHOLD).length;
-  const rate = atkCount > 0 ? caught / atkCount : 0;
-  const fill = document.getElementById('threat-fill');
-  const val = document.getElementById('threat-val');
-  const desc = document.getElementById('threat-desc');
-
-  if (!fill || !val || !desc) return;
-
-  if (atkCount === 0) {
-    fill.style.width = '10%';
-    fill.style.background = 'var(--green)';
-    val.style.color = 'var(--green)';
-    val.textContent = 'LOW';
-    desc.textContent = 'No active threats detected';
-  } else if (rate < 0.4) {
-    fill.style.width = '35%';
-    fill.style.background = 'var(--amber)';
-    val.style.color = 'var(--amber)';
-    val.textContent = 'MEDIUM';
-    desc.textContent = `${caught} intrusion attempt(s)`;
-  } else if (rate < 0.75) {
-    fill.style.width = '65%';
-    fill.style.background = 'var(--amber)';
-    val.style.color = 'var(--amber)';
-    val.textContent = 'HIGH';
-    desc.textContent = `${caught} intrusion attempt(s)!`;
-  } else {
-    fill.style.width = '94%';
-    fill.style.background = 'var(--red)';
-    val.style.color = 'var(--red)';
-    val.textContent = 'CRITICAL';
-    desc.textContent = `${caught} intrusions detected!`;
-  }
-}
-
-function updateStats() {
-  const lc = session.legitFids.length;
-  const ac = session.attackFids.length;
-  const la = lc > 0 ? (session.legitFids.reduce((a, b) => a + b, 0) / lc).toFixed(4) : '—';
-  const caught = session.attackFids.filter(f => f < THRESHOLD).length;
-  const det = ac > 0 ? `${(caught / ac * 100).toFixed(0)}%` : '—';
-  const drop = ac > 0 ? (THRESHOLD - session.attackFids.reduce((a, b) => a + b, 0) / ac).toFixed(4) : '—';
-
-  const stLegit = document.getElementById('st-legit');
-  const stLegitFid = document.getElementById('st-legit-fid');
-  const stIntrusions = document.getElementById('st-intrusions');
-  const stDet = document.getElementById('st-det');
-  const stFp = document.getElementById('st-fp');
-  const stDrop = document.getElementById('st-drop');
-
-  if (stLegit) stLegit.textContent = lc;
-  if (stLegitFid) stLegitFid.textContent = la;
-  if (stIntrusions) stIntrusions.textContent = caught;
-  if (stDet) stDet.textContent = det;
-  if (stFp) stFp.textContent = session.fp;
-  if (stDrop) stDrop.textContent = drop;
-
-  updateThreat();
-  updateConfusionMatrix();
-  renderROCChart();
-}
-
-function addLog(user, strategy, fid, isAlert, resource) {
-  const now = new Date();
-  const t = now.toTimeString().slice(0, 8);
-  logEntries.unshift({ user, strategy, fid, isAlert, t, resource: resource || activeResource });
-  renderLog();
-}
-
-function renderLog() {
-  const el = document.getElementById('audit-log');
-  if (!el) return;
-  if (!logEntries.length) {
-    el.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text3);font-size:11px;font-family:var(--mono);">No events yet. Attempt an access below.</div>';
-    return;
-  }
-
-  const stratMap = {
-    legit: 'Correct basis',
-    random: 'Random basis',
-    fixed: 'Fixed basis',
-    clone: 'Clone attempt'
-  };
-  const resMap = { db: 'DB', api: 'API', s3: 'S3' };
-
-  el.innerHTML = logEntries.slice(0, 22).map(e => {
-    const ico = e.isAlert
-      ? '<div class="log-ico al">⚠</div>'
-      : '<div class="log-ico ok">✓</div>';
-    const badge = e.isAlert
-      ? '<span class="badge br">ALERT</span>'
-      : '<span class="badge bg">VERIFIED</span>';
-    const rLabel = resMap[e.resource] || e.resource;
-    return `<div class="log-entry">
-      <div class="log-ts">${e.t}</div>
-      ${ico}
-      <div class="log-body">
-        <div class="log-user">${e.user} ${badge} <span style="font-size:10px;color:var(--text3);font-family:var(--mono);">[${rLabel}]</span></div>
-        <div class="log-detail">${stratMap[e.strategy] || e.strategy} · F=${e.fid.toFixed(4)} · thr=${THRESHOLD.toFixed(2)}</div>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function clearLog() {
-  logEntries = [];
-  renderLog();
-}
-
-function termLog(lines) {
-  const t = document.getElementById('terminal');
-  if (!t) return;
-  const cur = t.querySelector('.t-cur');
-  if (cur) cur.closest('div').remove();
-  lines.forEach(l => {
-    const d = document.createElement('div');
-    d.innerHTML = l;
-    t.appendChild(d);
-  });
-  const p = document.createElement('div');
-  p.innerHTML = '<span class="t-p">quantum@guard:~$ </span><span class="t-cur"></span>';
-  t.appendChild(p);
-  t.scrollTop = t.scrollHeight;
-}
-
-// ── 4. Intrusion Simulator ────────────────────────────────────────────────────
-function quickAccess() {
-  const user = document.getElementById('q-user').value;
-  const strategy = document.getElementById('q-strategy').value;
-  const token = makeToken(N_QUBITS);
-  const res = measureToken(token, strategy);
-  const isAlert = res.avg < THRESHOLD;
-  const meta = RESOURCE_META[activeResource];
-
-  const alarmIdx = [];
-  if (strategy !== 'legit') {
-    res.guessKey.forEach((g, i) => {
-      if (g !== token.basisKey[i]) alarmIdx.push(i);
-    });
-  }
-  renderQbGrid(token.basisKey, isAlert ? alarmIdx : []);
-
-  if (strategy === 'legit') {
-    session.legitFids.push(res.avg);
-    if (isAlert) session.fp++;
-  } else {
-    session.attackFids.push(res.avg);
-    if (isAlert) session.totalAttacks++;
-  }
-  updateStats();
-  addLog(user, strategy, res.avg, isAlert);
-
-  const el = document.getElementById(meta.rotatedEl);
-  if (el) el.textContent = new Date().toLocaleString();
-
-  // Animate node traffic pulse on threat map
-  animateTracePulse(meta.nodeId, isAlert);
-
-  const stratName = {
-    legit: 'Legitimate (correct basis)',
-    random: 'Random basis attack',
-    fixed: 'Fixed basis attack',
-    clone: 'Clone attempt (No-Cloning)'
-  }[strategy];
-
-  termLog([
-    `<span class="t-p">  →</span> <span class="t-i">Resource: <span class="t-v">${meta.label}</span> · User: ${user}</span>`,
-    `<span class="t-p">  →</span> <span class="t-i">Strategy: ${stratName}</span>`,
-    `<span class="t-p">  →</span> <span class="t-i">Measuring ${N_QUBITS} tripwire qubits...</span>`,
-    `<span class="t-p">  →</span> <span class="t-v">Avg fidelity: ${res.avg.toFixed(4)}  threshold: ${THRESHOLD.toFixed(2)}</span>`,
-    isAlert
-      ? `<span class="t-al">  [!] INTRUSION DETECTED — fidelity below threshold — ${user}</span>`
-      : `<span class="t-ok">  [✓] ACCESS VERIFIED — fidelity above threshold — ${user}</span>`
-  ]);
-}
-
-function runBatch() {
-  const strategy = document.getElementById('q-strategy').value;
-  let alerts = 0;
-  for (let i = 0; i < 40; i++) {
-    const token = makeToken(N_QUBITS);
-    const res = measureToken(token, strategy);
-    const isAlert = res.avg < THRESHOLD;
-    if (strategy === 'legit') {
-      session.legitFids.push(res.avg);
-      if (isAlert) session.fp++;
-    } else {
-      session.attackFids.push(res.avg);
-      if (isAlert) { session.totalAttacks++; alerts++; }
-    }
-  }
-  updateStats();
-  addLog('Batch (40×)', strategy, 0, alerts > 0);
-  
-  const meta = RESOURCE_META[activeResource];
-  animateTracePulse(meta.nodeId, alerts > 0);
-
-  termLog([
-    `<span class="t-i">  Batch run: 40 trials (${strategy})</span>`,
-    strategy !== 'legit'
-      ? `<span class="t-al">  [!] ${alerts}/40 alerts triggered (${(alerts / 40 * 100).toFixed(0)}% detection rate)</span>`
-      : `<span class="t-ok">  [✓] Legitimate batch: ${session.fp} false positives total</span>`
-  ]);
-  renderQbGrid([]);
-}
-
-// ── 5. Simulation Page & Attacker Cards ───────────────────────────────────────
-let selectedAtk = null;
-
-function selectAtk(type) {
-  document.querySelectorAll('.atk-card').forEach(c => c.classList.remove('sel'));
-  document.getElementById('atk-' + type).classList.add('sel');
-  selectedAtk = type;
-  runSingleSim(type);
-}
-
-function runSingleSim(strategy) {
-  const token = makeToken(N_QUBITS);
-  const res = measureToken(token, strategy);
-  const isAlert = res.avg < THRESHOLD;
-  const nameMap = {
-    random: 'RANDOM BASIS',
-    fixed: 'FIXED BASIS',
-    clone: 'CLONE ATTEMPT'
-  };
-  document.getElementById('sim-strat-badge').textContent = nameMap[strategy] || strategy;
-
-  const bd = document.getElementById('qb-breakdown');
-  bd.innerHTML = '';
-  res.scores.forEach((fid, i) => {
-    const ok = fid >= THRESHOLD;
-    const color = ok ? '#39ff14' : '#ff073a';
-    const fill = ok ? '#39ff14' : '#ff073a';
-    bd.innerHTML += `<div class="fid-row">
-      <span style="font-family:var(--mono);font-size:10px;color:var(--text3);min-width:22px;">q${i}</span>
-      <div class="fid-track"><div class="fid-fill" style="width:${(fid * 100).toFixed(0)}%;background:${fill};"></div></div>
-      <span class="fid-val" style="color:${color};">${fid.toFixed(3)}</span>
-    </div>`;
-  });
-
-  const cls = isAlert ? 'br' : 'bg';
-  const avgBadge = document.getElementById('avg-fid-badge');
-  avgBadge.className = 'badge ' + cls;
-  avgBadge.textContent = `${res.avg.toFixed(4)}${isAlert ? ' — ALERT' : ' — OK'}`;
-
-  simResults.unshift({ trial: simResults.length + 1, strategy, fid: res.avg, alert: isAlert });
-  renderSimTbl();
-}
-
-function renderSimTbl() {
-  const tbody = document.getElementById('sim-tbody');
-  if (!tbody) return;
-  const stratMap = { legit: 'Legitimate', random: 'Random Basis', fixed: 'Fixed Basis', clone: 'Clone' };
-  tbody.innerHTML = simResults.slice(0, 9).map(r => `<tr>
-    <td style="font-family:var(--mono);color:var(--text3);">#${r.trial}</td>
-    <td>${stratMap[r.strategy]}</td>
-    <td style="font-family:var(--mono);color:${r.alert ? 'var(--red)' : 'var(--green)'};">${r.fid.toFixed(4)}</td>
-    <td>${r.alert ? '<span class="badge br">ALERT</span>' : '<span class="badge bg">OK</span>'}</td>
-  </tr>`).join('');
-}
-
-function runFullSim() {
-  ['legit', 'random', 'fixed', 'clone'].forEach(s => {
-    for (let i = 0; i < 40; i++) {
-      const token = makeToken(N_QUBITS);
-      const res = measureToken(token, s);
-      const isAlert = res.avg < THRESHOLD;
-      simResults.unshift({ trial: simResults.length + 1, strategy: s, fid: res.avg, alert: isAlert });
-      if (s === 'legit') {
-        session.legitFids.push(res.avg);
-        if (isAlert) session.fp++;
-      } else {
-        session.attackFids.push(res.avg);
-        if (isAlert) session.totalAttacks++;
-      }
-    }
-  });
-  renderSimTbl();
-  updateStats();
-  termLog(['<span class="t-ok">  [✓] Full simulation complete — 160 trials across all strategies</span>']);
-}
-
-function runLegitDemo() {
-  const token = makeToken(N_QUBITS);
-  const l = measureToken(token, 'legit');
-  const a = measureToken(token, 'random');
-  document.getElementById('legit-fid').textContent = l.avg.toFixed(4);
-  document.getElementById('atk-fid').textContent = a.avg.toFixed(4);
-  document.getElementById('legit-status').className = 'badge bg';
-  document.getElementById('legit-status').textContent = 'VERIFIED';
-  document.getElementById('atk-status').className = 'badge br';
-  document.getElementById('atk-status').textContent = 'ALERT';
-}
-
-// ── 6. Analytics Section (Confusion Matrix & ROC Curve) ───────────────────────
-function updateConfusionMatrix() {
-  let tp = 0; // actual attack, predicted alert
-  let fn = 0; // actual attack, predicted verify
-  let fp = 0; // actual legit, predicted alert
-  let tn = 0; // actual legit, predicted verify
-  
-  session.attackFids.forEach(fid => {
-    if (fid < THRESHOLD) tp++;
-    else fn++;
-  });
-  
-  session.legitFids.forEach(fid => {
-    if (fid < THRESHOLD) fp++;
-    else tn++;
-  });
-  
-  const mTP = document.getElementById('m-tp');
-  const mFN = document.getElementById('m-fn');
-  const mFP = document.getElementById('m-fp');
-  const mTN = document.getElementById('m-tn');
-  
-  if (mTP) mTP.textContent = tp;
-  if (mFN) mFN.textContent = fn;
-  if (mFP) mFP.textContent = fp;
-  if (mTN) mTN.textContent = tn;
-  
-  const lbl = document.getElementById('matrix-thresh-lbl');
-  if (lbl) lbl.textContent = THRESHOLD.toFixed(2);
-}
-
-function calculateROCCurve() {
-  const thresholds = Array.from({ length: 21 }, (_, i) => i * 0.05); // 0.0 to 1.0
-  const rocPoints = [];
-  
-  thresholds.forEach(t => {
-    let tp = 0, fn = 0, fp = 0, tn = 0;
-    
-    session.attackFids.forEach(fid => {
-      if (fid < t) tp++;
-      else fn++;
-    });
-    
-    session.legitFids.forEach(fid => {
-      if (fid < t) fp++;
-      else tn++;
-    });
-    
-    const tpr = (tp + fn) > 0 ? (tp / (tp + fn)) : 0;
-    const fpr = (fp + tn) > 0 ? (fp / (fp + tn)) : 0;
-    
-    rocPoints.push({ x: fpr, y: tpr, threshold: t });
-  });
-  
-  rocPoints.sort((a, b) => a.x - b.x || a.y - b.y);
-  
-  // Clamp boundaries
-  if (!rocPoints.some(p => p.x === 0 && p.y === 0)) rocPoints.unshift({ x: 0, y: 0, threshold: 0 });
-  if (!rocPoints.some(p => p.x === 1 && p.y === 1)) rocPoints.push({ x: 1, y: 1, threshold: 1 });
-  
-  return rocPoints;
-}
-
-function renderROCChart() {
-  const ctx = document.getElementById('chart-roc');
-  if (!ctx) return;
-  
-  const rocPoints = calculateROCCurve();
-  const data = rocPoints.map(p => ({ x: p.x * 100, y: p.y * 100 }));
-  
-  if (charts.roc) charts.roc.destroy();
-  
-  const gridColor = 'rgba(255, 255, 255, 0.05)';
-  
-  charts.roc = new Chart(ctx, {
-    type: 'line',
-    data: {
-      datasets: [
-        {
-          label: 'ROC Curve',
-          data: data,
-          borderColor: '#00f2fe',
-          backgroundColor: 'rgba(0, 242, 254, 0.04)',
-          borderWidth: 2,
-          pointRadius: 4.5,
-          pointHoverRadius: 7,
-          fill: true,
-          tension: 0.15
-        },
-        {
-          label: 'Baseline',
-          data: [{ x: 0, y: 0 }, { x: 100, y: 100 }],
-          borderColor: 'rgba(255,255,255,0.1)',
-          borderDash: [5, 5],
-          borderWidth: 1.5,
-          pointRadius: 0,
-          fill: false
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: function(context) {
-              const idx = context.dataIndex;
-              const pt = rocPoints[idx];
-              if (pt) {
-                return `Threshold: ${pt.threshold.toFixed(2)} (FPR: ${(pt.x * 100).toFixed(0)}%, TPR: ${(pt.y * 100).toFixed(0)}%)`;
-              }
-              return '';
-            }
-          }
-        }
-      },
-      scales: {
-        x: {
-          type: 'linear',
-          min: 0,
-          max: 100,
-          title: { display: true, text: 'False Positive Rate (%)', color: '#a0aec0', font: { size: 10 } },
-          grid: { color: gridColor },
-          ticks: { color: '#64748b', font: { family: 'IBM Plex Mono', size: 9 } }
-        },
-        y: {
-          min: 0,
-          max: 100,
-          title: { display: true, text: 'True Positive Rate (%)', color: '#a0aec0', font: { size: 10 } },
-          grid: { color: gridColor },
-          ticks: { color: '#64748b', font: { family: 'IBM Plex Mono', size: 9 } }
-        }
-      }
-    }
-  });
-}
-
-function runAnalytics() {
-  const N = 40;
-  const cats = ['Legitimate', 'Random Basis', 'Fixed Basis', 'Clone Attempt'];
-  const strats = { 'Legitimate': 'legit', 'Random Basis': 'random', 'Fixed Basis': 'fixed', 'Clone Attempt': 'clone' };
-  const data = {};
-
-  cats.forEach(c => {
-    const fids = [];
-    for (let i = 0; i < N; i++) {
-      const token = makeToken(N_QUBITS);
-      fids.push(measureToken(token, strats[c]).avg);
-    }
-    data[c] = fids;
-  });
-  lastAnalyticsData = data;
-
-  const colors = ['#39ff14', '#ffb000', '#00f2fe', '#ff007f'];
-  const body = document.getElementById('analytics-tbody');
-  body.innerHTML = '';
-
-  cats.forEach((c, i) => {
-    const fids = data[c];
-    const mean = fids.reduce((a, b) => a + b, 0) / N;
-    const std = Math.sqrt(fids.map(f => (f - mean) ** 2).reduce((a, b) => a + b, 0) / N);
-    const min = Math.min(...fids);
-    const max = Math.max(...fids);
-    const alerts = fids.filter(f => f < THRESHOLD).length;
-    body.innerHTML += `<tr>
-      <td style="font-weight:700;color:${colors[i]};">${c}</td>
-      <td style="font-family:var(--mono);">${mean.toFixed(4)}</td>
-      <td style="font-family:var(--mono);color:var(--text3);">${std.toFixed(4)}</td>
-      <td style="font-family:var(--mono);color:var(--text3);">${min.toFixed(4)}</td>
-      <td style="font-family:var(--mono);color:var(--text3);">${max.toFixed(4)}</td>
-      <td style="font-family:var(--mono);">${alerts}/${N}</td>
-      <td><span class="badge ${alerts === 0 ? 'bg' : 'br'}">${(alerts / N * 100).toFixed(0)}%</span></td>
-    </tr>`;
-  });
-
-  // Inject analytical runs into session to render matrices
-  session.legitFids = session.legitFids.concat(data['Legitimate']);
-  session.attackFids = session.attackFids.concat(data['Random Basis']).concat(data['Fixed Basis']).concat(data['Clone Attempt']);
-
-  updateStats();
-
-  const means = cats.map(c => data[c].reduce((a, b) => a + b, 0) / N);
-  const rates = cats.map(c => data[c].filter(f => f < THRESHOLD).length / N * 100);
-  const opts = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: { legend: { display: false } },
-    animation: { duration: 500 }
-  };
-  const gridColor = 'rgba(255, 255, 255, 0.05)';
-
-  if (charts.fid) charts.fid.destroy();
-  charts.fid = new Chart(document.getElementById('chart-fid'), {
-    type: 'bar',
-    data: {
-      labels: ['Legitimate', 'Random Basis', 'Fixed Basis', 'Clone'],
-      datasets: [{
-        label: 'Avg Fidelity',
-        data: means.map(m => +m.toFixed(4)),
-        backgroundColor: colors.map(c => c + '1a'),
-        borderColor: colors,
-        borderWidth: 1.5,
-        borderRadius: 4
-      }]
-    },
-    options: {
-      ...opts,
-      scales: {
-        y: {
-          min: 0,
-          max: 1.05,
-          grid: { color: gridColor },
-          ticks: { color: '#64748b', font: { family: 'IBM Plex Mono', size: 9 } }
-        },
-        x: {
-          grid: { display: false },
-          ticks: { color: '#a0aec0', font: { size: 10 } }
-        }
-      }
-    }
-  });
-
-  if (charts.det) charts.det.destroy();
-  charts.det = new Chart(document.getElementById('chart-det'), {
-    type: 'bar',
-    data: {
-      labels: ['False+\n(Legit)', 'Random', 'Fixed', 'Clone'],
-      datasets: [{
-        label: 'Detection %',
-        data: rates.map(r => +r.toFixed(1)),
-        backgroundColor: colors.map(c => c + '1a'),
-        borderColor: colors,
-        borderWidth: 1.5,
-        borderRadius: 4
-      }]
-    },
-    options: {
-      ...opts,
-      scales: {
-        y: {
-          min: 0,
-          max: 110,
-          grid: { color: gridColor },
-          ticks: {
-            color: '#64748b',
-            font: { family: 'IBM Plex Mono', size: 9 },
-            callback: value => `${value}%`
-          }
-        },
-        x: {
-          grid: { display: false },
-          ticks: { color: '#a0aec0', font: { size: 10 } }
-        }
-      }
-    }
-  });
-
-  const labels = Array.from({ length: N }, (_, i) => i + 1);
-  if (charts.trials) charts.trials.destroy();
-  charts.trials = new Chart(document.getElementById('chart-trials'), {
-    type: 'line',
-    data: {
-      labels,
-      datasets: cats.map((c, i) => ({
-        label: c,
-        data: data[c].map(f => +f.toFixed(4)),
-        borderColor: colors[i],
-        backgroundColor: colors[i] + '0a',
-        borderWidth: 1.5,
-        pointRadius: 2,
-        tension: 0.25
-      }))
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: { duration: 600 },
-      plugins: {
-        legend: {
-          display: true,
-          labels: { color: '#a0aec0', font: { size: 11 }, boxWidth: 10 }
-        }
-      },
-      scales: {
-        y: {
-          min: 0,
-          max: 1.05,
-          grid: { color: gridColor },
-          ticks: { color: '#64748b', font: { family: 'IBM Plex Mono', size: 9 } }
-        },
-        x: {
-          grid: { display: false },
-          ticks: { color: '#64748b', font: { size: 9 }, maxTicksLimit: 10 }
-        }
-      }
-    }
-  });
-}
-
-// ── 7. Interactive Qubit Sandbox tab logic ────────────────────────────────────
-function switchSandboxTab(tabName) {
-  const circuitTab = document.getElementById('sandbox-circuit-tab');
-  const bb84Tab = document.getElementById('sandbox-bb84-tab');
-  const circuitBtn = document.getElementById('sb-tab-btn-circuit');
-  const bb84Btn = document.getElementById('sb-tab-btn-bb84');
-
-  if (tabName === 'circuit') {
-    circuitTab.style.display = 'grid';
-    bb84Tab.style.display = 'none';
-    circuitBtn.classList.add('active');
-    bb84Btn.classList.remove('active');
-  } else {
-    circuitTab.style.display = 'none';
-    bb84Tab.style.display = 'block';
-    circuitBtn.classList.remove('active');
-    bb84Btn.classList.add('active');
-  }
-}
-
-function updateNoiseCfg(v) {
-  sandboxNoise = parseFloat(v) / 100;
-  document.getElementById('noise-lbl').textContent = sandboxNoise.toFixed(2);
-}
-
-function updateAngleCfg(v) {
-  sandboxAngle = parseInt(v, 10);
-  document.getElementById('angle-lbl').textContent = v + '°';
-}
-
-function toggleSandboxGate(idx) {
-  const current = sandboxCircuitState[idx].prepGate;
-  if (current === null) {
-    sandboxCircuitState[idx].prepGate = 'X';
-  } else if (current === 'X') {
-    sandboxCircuitState[idx].prepGate = 'H';
-  } else if (current === 'H') {
-    sandboxCircuitState[idx].prepGate = 'XH';
-  } else {
-    sandboxCircuitState[idx].prepGate = null;
-  }
-  renderSandboxWires();
-}
-
-function toggleSandboxBasis(idx) {
-  sandboxCircuitState[idx].measureBasis = sandboxCircuitState[idx].measureBasis === '+' ? 'x' : '+';
-  renderSandboxWires();
-}
-
-function getQubitStateInfo(gate) {
-  if (gate === null) {
-    return { name: '|0⟩', vector: '[1.00, 0.00]', basis: '+', bit: 0 };
-  } else if (gate === 'X') {
-    return { name: '|1⟩', vector: '[0.00, 1.00]', basis: '+', bit: 1 };
-  } else if (gate === 'H') {
-    return { name: '|+⟩', vector: '[0.71, 0.71]', basis: 'x', bit: 0 };
-  } else if (gate === 'XH') {
-    return { name: '|−⟩', vector: '[0.71, -0.71]', basis: 'x', bit: 1 };
-  }
-}
-
-function renderSandboxWires() {
-  const wires = document.getElementById('sandbox-wires');
-  if (!wires) return;
-  wires.innerHTML = '';
-
-  sandboxCircuitState.forEach((state, i) => {
-    const info = getQubitStateInfo(state.prepGate);
-    let gateLabel = '+';
-    if (state.prepGate === 'X') gateLabel = 'X';
-    else if (state.prepGate === 'H') gateLabel = 'H';
-    else if (state.prepGate === 'XH') gateLabel = 'X-H';
-
-    const gateClass = state.prepGate ? `wire-gate ${state.prepGate.toLowerCase().replace('-', '')}-gate` : 'gate-placeholder';
-    const basisClass = state.measureBasis === '+' ? 'wire-measure' : 'wire-measure active';
-    
-    wires.innerHTML += `
-      <div class="circuit-wire-row">
-        <div class="wire-label">q${i}</div>
-        <div style="font-family:var(--mono); font-size:11.5px; color:var(--text3); min-width:32px;">|0⟩</div>
-        <div class="wire-line-container">
-          <div class="${gateClass}" onclick="toggleSandboxGate(${i})">${gateLabel}</div>
-        </div>
-        <button class="${basisClass}" onclick="toggleSandboxBasis(${i})">${state.measureBasis}</button>
-        <div class="qb-cell" id="sb-outcome-${i}">q${i}</div>
-      </div>
-    `;
-  });
-
-  updateSandboxTelemetry();
-}
-
-function updateSandboxTelemetry() {
-  const tel = document.getElementById('sandbox-telemetry');
-  if (!tel) return;
-  tel.innerHTML = '';
-
-  sandboxCircuitState.forEach((state, i) => {
-    const info = getQubitStateInfo(state.prepGate);
-    tel.innerHTML += `
-      <div class="state-viewer">
-        <div class="state-viewer-row">
-          <span style="color:var(--accent2); font-weight:700;">q${i} Preparation:</span>
-          <span style="color:var(--text); font-weight:700;">${info.name}</span>
-        </div>
-        <div class="state-viewer-row">
-          <span style="color:var(--text3);">Statevector:</span>
-          <span style="font-family:var(--mono); color:var(--accent); font-size:10.5px;">${info.vector}</span>
-        </div>
-        <div class="state-viewer-row">
-          <span style="color:var(--text3);">Encoding basis/bit:</span>
-          <span>B: <strong>${info.basis}</strong> · Bit: <strong>${info.bit}</strong></span>
-        </div>
-      </div>
-    `;
-  });
-}
-
-function clearSandboxCircuit() {
-  sandboxCircuitState.forEach(s => {
-    s.prepGate = null;
-    s.measureBasis = '+';
-  });
-  renderSandboxWires();
-  sandboxTermLog([`<div><span class="t-i">[SYSTEM] Circuit cleared. All preparation states reset to |0⟩.</span></div>`]);
-}
-
-function sandboxTermLog(lines) {
-  const t = document.getElementById('sandbox-terminal');
-  if (!t) return;
-  t.innerHTML = '';
-  lines.forEach(l => {
-    const d = document.createElement('div');
-    d.innerHTML = l;
-    t.appendChild(d);
-  });
-  t.scrollTop = t.scrollHeight;
-}
-
-function runSandboxMeasurement() {
-  const angleRad = (sandboxAngle * Math.PI) / 180;
-  const results = [];
-  let totalFidelity = 0;
-  const termLines = [];
-  
-  sandboxCircuitState.forEach((state, i) => {
-    const info = getQubitStateInfo(state.prepGate);
-    const match = info.basis === state.measureBasis;
-    
-    // Rotation & depolarizing noise statistics
-    let pCorrect;
-    if (match) {
-      // Rotate by alignment offset
-      pCorrect = (1 - sandboxNoise) * (Math.cos(angleRad) ** 2) + sandboxNoise * 0.5;
-    } else {
-      pCorrect = 0.5; // mismatch collapses state 50-50
-    }
-    
-    const isCorrect = Math.random() < pCorrect;
-    const fid = isCorrect ? pCorrect : (1 - pCorrect);
-    totalFidelity += fid;
-    
-    const cell = document.getElementById(`sb-outcome-${i}`);
-    if (cell) {
-      cell.className = 'qb-cell';
-      if (!isCorrect) {
-        cell.className += ' alarm';
-        cell.textContent = '!';
-      } else {
-        if (state.measureBasis === '+') {
-          cell.className += ' plus';
-          cell.textContent = info.bit === 0 ? '|0⟩' : '|1⟩';
-        } else {
-          cell.className += ' cross';
-          cell.textContent = info.bit === 0 ? '|+⟩' : '|−⟩';
-        }
-      }
-    }
-    
-    termLines.push(
-      `<span class="t-p">  q${i}:</span> prepared ${info.name} (${info.basis}), measured in ${state.measureBasis}. Match? ${match ? 'YES' : 'NO'}. Fidelity: ${fid.toFixed(3)} ${isCorrect ? '✓' : '⚠ COLLAPSE'}`
-    );
-  });
-  
-  const avgFid = totalFidelity / sandboxCircuitState.length;
-  const isAlert = avgFid < THRESHOLD;
-  
-  termLines.unshift(
-    `<span class="t-i">[SIMULATION] Running measurement: noise=${sandboxNoise.toFixed(2)}, offset=${sandboxAngle}°.</span>`
+// ── 1. Page Navigation ──
+function navigateTo(viewName) {
+  document.querySelectorAll('.view-panel').forEach(el => el.style.display = 'none');
+  document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
+
+  const panel = document.getElementById(`view-${viewName}`);
+  if (panel) panel.style.display = 'block';
+
+  const navBtn = Array.from(document.querySelectorAll('.nav-link')).find(btn => 
+    btn.getAttribute('onclick')?.includes(viewName)
   );
-  termLines.push(
-    `<span class="t-p">  →</span> <strong>Average Sandbox Fidelity: ${avgFid.toFixed(4)}</strong> (threshold ${THRESHOLD})`,
-    isAlert 
-      ? `<span class="t-al">  [!] ALARM TRIGGERED — quantum state altered by attacker or high noise!</span>`
-      : `<span class="t-ok">  [✓] ACCESS GRANTED — state verified within tolerance.</span>`
-  );
-  
-  sandboxTermLog(termLines);
-}
+  if (navBtn) navBtn.classList.add('active');
 
-// ── 8. BB84 Key Exchange Protocol walkthrough ─────────────────────────────────
-function initBB84Data() {
-  bb84State.aliceBits = [];
-  bb84State.aliceBases = [];
-  bb84State.bobBases = [];
-  bb84State.eveBases = [];
-  bb84State.bobBits = [];
-  bb84State.eveIntercept = false;
-  
-  for (let i = 0; i < 8; i++) {
-    bb84State.aliceBits.push(Math.random() < 0.5 ? 0 : 1);
-    bb84State.aliceBases.push(Math.random() < 0.5 ? '+' : 'x');
-    bb84State.bobBases.push(Math.random() < 0.5 ? '+' : 'x');
-    bb84State.eveBases.push(Math.random() < 0.5 ? '+' : 'x');
-  }
-}
-
-function calculateBobBits() {
-  bb84State.bobBits = [];
-  for (let i = 0; i < 8; i++) {
-    const ab = bb84State.aliceBases[i];
-    const bb = bb84State.bobBases[i];
-    const aliceBit = bb84State.aliceBits[i];
-    
-    if (bb84State.eveIntercept) {
-      const eb = bb84State.eveBases[i];
-      // Eve measures Alice's bit
-      const eveMatch = ab === eb;
-      const eveBit = eveMatch ? aliceBit : (Math.random() < 0.5 ? 0 : 1);
-      
-      // Bob measures Eve's bit
-      const bobMatch = eb === bb;
-      const bobBit = bobMatch ? eveBit : (Math.random() < 0.5 ? 0 : 1);
-      bb84State.bobBits.push(bobBit);
-    } else {
-      const match = ab === bb;
-      const bobBit = match ? aliceBit : (Math.random() < 0.5 ? 0 : 1);
-      bb84State.bobBits.push(bobBit);
+  // Load relevant data on view change
+  if (viewName === 'dashboard') {
+    refreshDashboard();
+  } else if (viewName === 'threats') {
+    loadThreatEvents();
+    loadIncidents();
+  } else if (viewName === 'decoys') {
+    loadDecoys();
+  } else if (viewName === 'lab') {
+    applyQubitGate('I');
+  } else if (viewName === 'reports') {
+    const mdContent = document.getElementById('markdown-viewer-content');
+    if (mdContent && mdContent.querySelector('[style*="Select"]')) {
+      loadMarkdownDoc('README');
     }
   }
 }
 
-function toggleEveIntercept() {
-  bb84State.eveIntercept = !bb84State.eveIntercept;
-  if (bb84State.step >= 2) {
-    calculateBobBits();
-  }
-  renderBB84Table();
-  updateBB84StepDetails();
-}
-
-function stepBB84(dir) {
-  if (dir === 1) {
-    if (bb84State.step === 4) {
-      bb84State.step = 0;
-      initBB84Data();
-    } else {
-      bb84State.step++;
-    }
-  } else {
-    if (bb84State.step > 0) {
-      bb84State.step--;
-    }
-  }
-  
-  if (bb84State.step === 2) {
-    calculateBobBits();
-  }
-  
-  renderBB84Table();
-  updateBB84StepDetails();
-}
-
-function goToBB84Step(s) {
-  bb84State.step = s;
-  if (bb84State.step >= 2) {
-    calculateBobBits();
-  }
-  renderBB84Table();
-  updateBB84StepDetails();
-}
-
-function renderBB84Table() {
-  const tbody = document.getElementById('bb84-table-body');
-  if (!tbody) return;
-  tbody.innerHTML = '';
-  
-  const step = bb84State.step;
-  
-  // 1. Alice's Bit
-  let html = `<tr><td>Alice's Bit</td>` + bb84State.aliceBits.map(b => `<td>${b}</td>`).join('') + `</tr>`;
-  
-  // 2. Alice's Basis
-  html += `<tr><td>Alice's Basis</td>` + bb84State.aliceBases.map(b => `<td class="bb84-cell-basis rect">${b}</td>`).join('') + `</tr>`;
-  
-  // 3. Prepared Qubit State
-  html += `<tr><td>Prepared Qubit</td>` + bb84State.aliceBits.map((b, i) => {
-    const basis = bb84State.aliceBases[i];
-    let state = '';
-    if (basis === '+') state = b === 0 ? '|0⟩' : '|1⟩';
-    else state = b === 0 ? '|+⟩' : '|−⟩';
-    return `<td>${state}</td>`;
-  }).join('') + `</tr>`;
-  
-  // 4. Eve's Intercept
-  if (step >= 1) {
-    html += `<tr><td style="color:var(--pink);">Eve's Intercept</td><td colspan="8" style="text-align:left; font-family:var(--sans); font-weight:700;">
-      <label style="cursor:pointer; display:flex; align-items:center; gap:8px;">
-        <input type="checkbox" id="eve-intercept-chk" ${bb84State.eveIntercept ? 'checked' : ''} onchange="toggleEveIntercept()"> 
-        Simulate Eve eavesdropping (Intercept-Resend)
-      </label>
-    </td></tr>`;
-    
-    if (bb84State.eveIntercept) {
-      html += `<tr><td style="color:var(--pink);">Eve's Guess Basis</td>` + bb84State.eveBases.map(b => `<td class="bb84-cell-basis diag">${b}</td>`).join('') + `</tr>`;
-      html += `<tr><td style="color:var(--pink);">Eve's Measured Bit</td>` + bb84State.aliceBits.map((b, i) => {
-        const match = bb84State.aliceBases[i] === bb84State.eveBases[i];
-        const eveBit = match ? b : (Math.random() < 0.5 ? 0 : 1);
-        return `<td>${eveBit}</td>`;
-      }).join('') + `</tr>`;
-    }
-  }
-  
-  // 5. Bob's rows
-  if (step >= 2) {
-    html += `<tr><td>Bob's Basis</td>` + bb84State.bobBases.map(b => `<td class="bb84-cell-basis rect">${b}</td>`).join('') + `</tr>`;
-    if (bb84State.bobBits.length === 0) {
-      calculateBobBits();
-    }
-    html += `<tr><td>Bob's Measured Bit</td>` + bb84State.bobBits.map(b => `<td>${b}</td>`).join('') + `</tr>`;
-  }
-  
-  // 6. Sifting Basis Match check
-  if (step >= 3) {
-    html += `<tr><td>Basis Match?</td>` + bb84State.aliceBases.map((ab, i) => {
-      const match = ab === bb84State.bobBases[i];
-      const cls = match ? 'bb84-highlight' : 'bb84-mismatch';
-      return `<td class="${cls}">${match ? 'MATCH' : 'DISCARD'}</td>`;
-    }).join('') + `</tr>`;
-    
-    // Sifted Key row
-    html += `<tr><td>Sifted Key</td>` + bb84State.aliceBases.map((ab, i) => {
-      const match = ab === bb84State.bobBases[i];
-      if (match) {
-        return `<td class="bb84-highlight" style="font-weight:800; font-size:13.5px;">${bb84State.bobBits[i]}</td>`;
-      } else {
-        return `<td style="color:var(--text3); opacity:0.35;">-</td>`;
-      }
-    }).join('') + `</tr>`;
-  }
-  
-  tbody.innerHTML = html;
-}
-
-function updateBB84StepDetails() {
-  const step = bb84State.step;
-  const meta = BB84_STEPS_META[step];
-  
-  document.getElementById('bb84-step-title').textContent = meta.title;
-  document.getElementById('bb84-step-desc').textContent = meta.desc;
-  
-  // Highlight active step timeline dot
-  for (let i = 0; i < 5; i++) {
-    const el = document.getElementById(`bb-step-${i}`);
-    if (el) {
-      el.className = 'bb84-step';
-      if (i === step) el.className += ' active';
-      else if (i < step) el.className += ' completed';
-    }
-  }
-  
-  document.getElementById('btn-bb84-prev').disabled = step === 0;
-  document.getElementById('btn-bb84-next').textContent = step === 4 ? 'Reset Walkthrough' : 'Next Step';
-  
-  // Step actions ctrls
-  const ctrls = document.getElementById('bb84-step-ctrls');
-  if (!ctrls) return;
-  ctrls.innerHTML = '';
-  
-  if (step === 0) {
-    ctrls.innerHTML = `<button class="btn btn-ghost btn-sm" onclick="initBB84Data(); renderBB84Table();">Randomize Bits & Bases</button>`;
-  } else if (step === 1) {
-    const btnText = bb84State.eveIntercept ? 'Bypass Eve Intercept' : 'Eavesdrop on Channel';
-    ctrls.innerHTML = `<button class="btn btn-ghost btn-sm" onclick="toggleEveIntercept()">${btnText}</button>`;
-  } else if (step === 4) {
-    let siftedMatch = 0;
-    let siftedTotal = 0;
-    bb84State.aliceBases.forEach((ab, i) => {
-      if (ab === bb84State.bobBases[i]) {
-        siftedTotal++;
-        if (bb84State.aliceBits[i] === bb84State.bobBits[i]) {
-          siftedMatch++;
-        }
-      }
-    });
-    
-    const errorRate = siftedTotal > 0 ? ((siftedTotal - siftedMatch) / siftedTotal * 100) : 0;
-    const isCompromised = errorRate > 5;
-    
-    ctrls.innerHTML = `
-      <div style="display:flex; flex-direction:column; gap:6px;">
-        <div style="font-size:12px; color:var(--text2);">Sifted Key Length: <strong>${siftedTotal} bits</strong></div>
-        <div style="font-size:12px; color:var(--text2);">Mismatched Sifted Bits: <strong>${siftedTotal - siftedMatch} bits</strong></div>
-        <div style="font-size:14px; font-weight:700;">
-          Calculated Error Rate: 
-          <span style="color:${isCompromised ? 'var(--red)' : 'var(--green)'}; text-shadow:0 0 5px currentColor;">
-            ${errorRate.toFixed(1)}%
-          </span>
-        </div>
-        <div class="badge ${isCompromised ? 'br' : 'bg'}" style="margin-top:4px; max-width:fit-content;">
-          ${isCompromised ? '⚠ COMPROMISED — HONEYPOT INTRUSION ALARM ACTIVE' : '✓ SECURE — SHIELD ACTIVE'}
-        </div>
-      </div>
-    `;
-  }
-}
-
-// ── 9. Technical Report Builder ───────────────────────────────────────────────
-function buildReport() {
-  const N = 40;
-  const cats = ['Legitimate', 'Random Basis', 'Fixed Basis', 'Clone Attempt'];
-  const strats = { 'Legitimate': 'legit', 'Random Basis': 'random', 'Fixed Basis': 'fixed', 'Clone Attempt': 'clone' };
-  const data = {};
-
-  cats.forEach(c => {
-    const fids = [];
-    for (let i = 0; i < N; i++) {
-      const token = makeToken(N_QUBITS);
-      fids.push(measureToken(token, strats[c]).avg);
-    }
-    data[c] = fids;
-  });
-
-  const stat = c => {
-    const f = data[c];
-    const mean = f.reduce((a, b) => a + b, 0) / N;
-    const std = Math.sqrt(f.map(x => (x - mean) ** 2).reduce((a, b) => a + b, 0) / N);
-    const alerts = f.filter(x => x < THRESHOLD).length;
-    return { mean, std, min: Math.min(...f), max: Math.max(...f), alerts, rate: (alerts / N * 100).toFixed(0) };
-  };
-
-  const legitSt = stat('Legitimate');
-  const randSt = stat('Random Basis');
-  const fixedSt = stat('Fixed Basis');
-  const cloneSt = stat('Clone Attempt');
-  const ts = new Date().toLocaleString('en-IN', { dateStyle: 'long', timeStyle: 'short' });
-
-  const html = `
-    <div class="rpt-cover">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:1rem;">
-        <div>
-          <div style="font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:0.14em;text-transform:uppercase;margin-bottom:8px;font-weight:700;">Technical Report · Quantum Computing + Cybersecurity</div>
-          <div class="rpt-cover-title">Quantum Honeypot System</div>
-          <div class="rpt-cover-title" style="font-size:16px;color:var(--text2); font-weight:500;">Tripwire-Based Intrusion Detection using Quantum Principles</div>
-          <div style="margin-top:12px;font-size:12.5px;color:var(--text2);">Department of Computer Science & IT · Mini Project Report</div>
-        </div>
-        <div style="text-align:right;">
-          <div style="font-family:var(--mono);font-size:10px;color:var(--text3);font-weight:700;">Generated</div>
-          <div style="font-family:var(--mono);font-size:12px;color:var(--text);font-weight:700;">${ts}</div>
-          <div style="margin-top:8px;"><span class="badge bb">SIMULATION REPORT</span></div>
-        </div>
-      </div>
-      <div class="rpt-meta-grid">
-        <div class="rpt-meta">
-          <div class="rpt-meta-k">Active Resources</div>
-          <div class="rpt-meta-v">3 honeypot tokens (DB, API, S3)</div>
-        </div>
-        <div class="rpt-meta">
-          <div class="rpt-meta-k">Qubit Configuration</div>
-          <div class="rpt-meta-v">${N_QUBITS} tripwire qubits per token</div>
-        </div>
-        <div class="rpt-meta">
-          <div class="rpt-meta-k">Alert Threshold</div>
-          <div class="rpt-meta-v">Fidelity F < ${THRESHOLD.toFixed(2)}</div>
-        </div>
-        <div class="rpt-meta">
-          <div class="rpt-meta-k">Simulation Trials</div>
-          <div class="rpt-meta-v">${N} per category (${N * 4} total)</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card rpt-section">
-      <div class="rpt-section-title">Abstract</div>
-      <div style="font-size:13px;color:var(--text2);line-height:1.75;">
-        This project implements a <strong style="color:var(--text);">Quantum Honeypot System</strong> — a novel intrusion detection mechanism
-        that embeds quantum tripwires inside fake but realistic-looking system credentials. Classical honeypots can be
-        silently probed or cloned by sophisticated attackers, leaving logs that may be wiped. Our approach exploits
-        two fundamental quantum properties — the <em>Observer Effect</em> and the <em>No-Cloning Theorem</em> — to make
-        silent access physically impossible. Any entity that attempts to read or copy a protected resource without
-        the secret basis key will inevitably disturb the quantum state, producing a measurable fidelity drop that
-        triggers an irreversible alert.
-      </div>
-      <div style="font-size:13px;color:var(--text2);line-height:1.75;margin-top:0.75rem;">
-        The system was implemented in Python using Qiskit and simulated using AerSimulator, with a JavaScript-based
-        interactive dashboard for real-time visualisation. Three attack strategies were evaluated — random basis
-        guessing, fixed basis measurement, and clone attempts — all of which are reliably detected. Legitimate
-        users with the correct basis key achieve fidelity scores near 1.0, while attackers consistently score
-        below the 0.85 alarm threshold.
-      </div>
-    </div>
-
-    <div class="card rpt-section">
-      <div class="rpt-section-title">Key Results — ${N} Trial Simulation</div>
-      <table class="tbl">
-        <thead>
-          <tr><th>Access Type</th><th>Mean Fidelity</th><th>Std Dev</th><th>Alerts / ${N}</th><th>Detection Rate</th></tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td style="color:var(--green);font-weight:700;">Legitimate (correct basis)</td>
-            <td style="font-family:var(--mono);">${legitSt.mean.toFixed(4)}</td>
-            <td style="font-family:var(--mono);color:var(--text3);">${legitSt.std.toFixed(4)}</td>
-            <td style="font-family:var(--mono);">${legitSt.alerts} / ${N}</td>
-            <td><span class="badge bg">${legitSt.rate}% FP rate</span></td>
-          </tr>
-          <tr>
-            <td style="color:var(--amber);font-weight:700;">Random Basis Attack</td>
-            <td style="font-family:var(--mono);">${randSt.mean.toFixed(4)}</td>
-            <td style="font-family:var(--mono);color:var(--text3);">${randSt.std.toFixed(4)}</td>
-            <td style="font-family:var(--mono);">${randSt.alerts} / ${N}</td>
-            <td><span class="badge br">${randSt.rate}% detected</span></td>
-          </tr>
-          <tr>
-            <td style="color:var(--accent);font-weight:700;">Fixed Basis Attack</td>
-            <td style="font-family:var(--mono);">${fixedSt.mean.toFixed(4)}</td>
-            <td style="font-family:var(--mono);color:var(--text3);">${fixedSt.std.toFixed(4)}</td>
-            <td style="font-family:var(--mono);">${fixedSt.alerts} / ${N}</td>
-            <td><span class="badge br">${fixedSt.rate}% detected</span></td>
-          </tr>
-          <tr>
-            <td style="color:var(--pink);font-weight:700;">Clone Attempt</td>
-            <td style="font-family:var(--mono);">${cloneSt.mean.toFixed(4)}</td>
-            <td style="font-family:var(--mono);color:var(--text3);">${cloneSt.std.toFixed(4)}</td>
-            <td style="font-family:var(--mono);">${cloneSt.alerts} / ${N}</td>
-            <td><span class="badge br">${cloneSt.rate}% detected</span></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="card rpt-section">
-      <div class="rpt-section-title">Findings & Discussion</div>
-      <div class="rpt-finding">
-        <div class="rpt-finding-num">01</div>
-        <div class="rpt-finding-body">
-          <div class="rpt-finding-title">Reliable separation between legitimate and malicious access</div>
-          <div class="rpt-finding-desc">
-            Legitimate users with the correct basis key consistently produced fidelity scores near
-            <strong>${legitSt.mean.toFixed(3)}</strong>, well above the alert threshold of ${THRESHOLD.toFixed(2)}.
-            All three attack strategies fell significantly below this — random basis averaging
-            ~${randSt.mean.toFixed(3)}, confirming the 50% wrong-guess probability from quantum
-            measurement theory. The separation (Δ ≈ ${(legitSt.mean - randSt.mean).toFixed(3)}) is large
-            enough that the threshold can be tuned without compromising either detection rate or false positives.
-          </div>
-        </div>
-      </div>
-      <div class="rpt-finding">
-        <div class="rpt-finding-num">02</div>
-        <div class="rpt-finding-body">
-          <div class="rpt-finding-title">Clone attempts show the most severe fidelity degradation</div>
-          <div class="rpt-finding-desc">
-            Simulated clone attacks — modelling decoherence from attempting to duplicate an unknown quantum
-            state — produced the lowest average fidelity (~${cloneSt.mean.toFixed(3)}) with the highest
-            detection rate (${cloneSt.rate}%). This aligns with the No-Cloning Theorem: any attempt to copy
-            a qubit unavoidably introduces noise, making this attack vector the easiest to detect.
-          </div>
-        </div>
-      </div>
-      <div class="rpt-finding">
-        <div class="rpt-finding-num">03</div>
-        <div class="rpt-finding-body">
-          <div class="rpt-finding-title">Near-zero false positive rate</div>
-          <div class="rpt-finding-desc">
-            Across ${N} legitimate access trials, only ${legitSt.alerts} were incorrectly flagged — a
-            false positive rate of ${legitSt.rate}%. This is achieved because correct-basis measurement
-            produces deterministic fidelity close to 1.0 rather than probabilistic outcomes, giving a clear
-            and reliable decision boundary.
-          </div>
-        </div>
-      </div>
-      <div class="rpt-finding">
-        <div class="rpt-finding-num">04</div>
-        <div class="rpt-finding-body">
-          <div class="rpt-finding-title">Scalability: more qubits → higher reliability</div>
-          <div class="rpt-finding-desc">
-            With N_QUBITS = ${N_QUBITS}, the law of large numbers smooths out per-qubit variance in the
-            averaged fidelity score. Increasing qubit count narrows the standard deviation for both
-            legitimate (${legitSt.std.toFixed(4)}) and attack (${randSt.std.toFixed(4)}) distributions,
-            widening the detection margin further. Twelve qubits would reduce FP rate to near zero.
-          </div>
-        </div>
-      </div>
-      <div class="rpt-note">
-        <strong style="color:var(--amber);">Note on simulation realism:</strong> This implementation uses
-        a pure-state statevector model without decoherence or shot noise, which assumes ideal quantum hardware.
-        On real quantum devices (NISQ-era), additional noise sources would need to be modelled — a promising
-        direction for future work using Qiskit's noise models.
-      </div>
-    </div>
-
-    <div class="card rpt-section">
-      <div class="rpt-section-title">Theoretical Foundations</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
-        <div>
-          <div style="font-size:13px;font-weight:700;margin-bottom:6px;color:var(--accent2);">No-Cloning Theorem</div>
-          <div style="font-size:12.5px;color:var(--text2);line-height:1.7;">
-            Wootters & Zurek (1982) proved that quantum states cannot be duplicated. Unlike classical
-            bits, there is no physical process U such that U|ψ⟩|0⟩ = |ψ⟩|ψ⟩ for all |ψ⟩. This is the
-            cornerstone of quantum key distribution (BB84) and our tripwire mechanism.
-          </div>
-          <div class="formula" style="margin-top:8px;">∄U : U|ψ⟩|0⟩ = |ψ⟩|ψ⟩ ∀|ψ⟩</div>
-        </div>
-        <div>
-          <div style="font-size:13px;font-weight:700;margin-bottom:6px;color:var(--teal);">Observer Effect & Measurement</div>
-          <div style="font-size:12.5px;color:var(--text2);line-height:1.7;">
-            A qubit in superposition |+⟩ = (|0⟩+|1⟩)/√2, when measured in the × basis, collapses to
-            a random state with P(wrong) = 0.5. Averaging across N tripwires, the expected fidelity for
-            a random-basis attacker approaches 0.5 — well below our 0.85 threshold.
-          </div>
-          <div class="formula" style="margin-top:8px;">H|0⟩ = |+⟩ = (|0⟩+|1⟩)/√2
-E[F_attacker] ≈ 0.50</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card rpt-section">
-      <div class="rpt-section-title">Project Team</div>
-      <div class="rpt-team-grid">
-        <div class="rpt-member">
-          <div class="rpt-avatar" style="background:rgba(0, 242, 254, 0.15); color:var(--accent);">AV</div>
-          <div>
-            <div class="rpt-mname">Aman Verma</div>
-            <div class="rpt-mrole">Theory, Background & Integration</div>
-          </div>
-        </div>
-        <div class="rpt-member">
-          <div class="rpt-avatar" style="background:var(--teal2); color:var(--teal);">RB</div>
-          <div>
-            <div class="rpt-mname">Rohit Bhagat</div>
-            <div class="rpt-mrole">Circuit Design</div>
-          </div>
-        </div>
-        <div class="rpt-member">
-          <div class="rpt-avatar" style="background:var(--amber2); color:var(--amber);">AR</div>
-          <div>
-            <div class="rpt-mname">Ankit Raj</div>
-            <div class="rpt-mrole">Attacker Simulation & Alerts</div>
-          </div>
-        </div>
-        <div class="rpt-member">
-          <div class="rpt-avatar" style="background:var(--pink2); color:var(--pink);">AA</div>
-          <div>
-            <div class="rpt-mname">Ayan Ashraf</div>
-            <div class="rpt-mrole">Analysis & Visualisation</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card rpt-section">
-      <div class="rpt-section-title">References</div>
-      <div style="display:flex;flex-direction:column;gap:8px;font-size:12.5px;line-height:1.7;">
-        <div>[1] W. K. Wootters and W. H. Zurek, "A single quantum cannot be cloned," <em>Nature</em>, vol. 299, pp. 802–803, 1982.</div>
-        <div>[2] C. H. Bennett and G. Brassard, "Quantum Cryptography: Public key distribution and coin tossing," <em>Proc. IEEE Int. Conf. on Computers, Systems and Signal Processing</em>, 1984, pp. 175–179.</div>
-        <div>[3] M. A. Nielsen and I. L. Chuang, <em>Quantum Computation and Quantum Information</em>. Cambridge University Press, 2010.</div>
-        <div>[4] L. Spitzner, <em>Honeypots: Tracking Hackers</em>. Addison-Wesley Professional, 2002.</div>
-        <div>[5] IBM Quantum, "Qiskit Documentation," 2024. [Online]. Available: https://docs.quantum.ibm.com/</div>
-      </div>
-    </div>
-  `;
-
-  document.getElementById('report-body').innerHTML = html;
-}
-
-function showTab(name, btn) {
-  ['concepts', 'gates', 'arch', 'refs'].forEach(t => {
-    document.getElementById('tab-' + t).style.display = 'none';
-  });
-  document.querySelectorAll('.tab').forEach(t => {
-    if (t.id !== 'sb-tab-btn-circuit' && t.id !== 'sb-tab-btn-bb84') {
-      t.classList.remove('active');
-    }
-  });
-  document.getElementById('tab-' + name).style.display = '';
-  btn.classList.add('active');
-}
-
-function initApp() {
-  renderQbGrid([]);
-  const ts = new Date().toLocaleString();
-  ['db-rotated', 'api-rotated', 's3-rotated'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = ts;
-  });
-
-  setTimeout(() => {
-    termLog([
-      `<span class="t-ok">  [✓] AerSimulator backend initialised (statevector method)</span>`,
-      `<span class="t-p">  →</span> <span class="t-i">Prep '+': <span class="t-v">H|0⟩ = |+⟩</span></span>`,
-// ── Real Backend API & Server-Sent Events (SSE) Integration ──
-let cachedEvents = [];
-
+// ── 2. Authentication ──
 function openLoginModal() {
   const modal = document.getElementById('login-modal');
-  if (modal) modal.style.display = 'flex';
+  if (modal) modal.classList.add('open');
 }
 
 function closeLoginModal() {
   const modal = document.getElementById('login-modal');
-  if (modal) modal.style.display = 'none';
-  const errBox = document.getElementById('login-error-msg');
-  if (errBox) errBox.style.display = 'none';
+  if (modal) modal.classList.remove('open');
+  const err = document.getElementById('login-error');
+  if (err) err.style.display = 'none';
 }
 
-async function handleLoginSubmit() {
-  const user = document.getElementById('login-username').value.trim();
-  const pass = document.getElementById('login-password').value.trim();
-  const errBox = document.getElementById('login-error-msg');
-  const btn = document.getElementById('btn-submit-login');
-
-  if (!user || !pass) {
-    if (errBox) { errBox.textContent = 'Please enter both username and password'; errBox.style.display = 'block'; }
-    return;
-  }
+async function handleLogin(e) {
+  e.preventDefault();
+  const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errBox = document.getElementById('login-error');
+  const btn = document.getElementById('btn-login-submit');
 
   try {
-    btn.textContent = 'Authenticating...';
+    btn.textContent = 'Verifying...';
     btn.disabled = true;
-    await API.login(user, pass);
+
+    const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Invalid username or password');
+    }
+
+    const data = await res.json();
+    currentToken = data.access_token;
+    currentUser = data.user;
+    localStorage.setItem('qg_token', currentToken);
+    localStorage.setItem('qg_user', JSON.stringify(currentUser));
+
     closeLoginModal();
-    renderAuthUI();
-    loadRealOverview();
-    termLog([`<span class="t-ok">  [✓] Authenticated as '${user}' (${API.currentUser.role.toUpperCase()})</span>`]);
+    renderAuthStatus();
+    refreshDashboard();
+    connectSSE();
   } catch (err) {
-    if (errBox) { errBox.textContent = err.message || 'Login failed'; errBox.style.display = 'block'; }
+    if (errBox) {
+      errBox.textContent = err.message;
+      errBox.style.display = 'block';
+    }
   } finally {
     btn.textContent = 'Sign In';
     btn.disabled = false;
@@ -1590,347 +120,918 @@ async function handleLoginSubmit() {
 }
 
 function handleLogout() {
-  API.logout();
-  renderAuthUI();
-  termLog([`<span class="t-p">  →</span> <span class="t-i">User logged out</span>`]);
+  if (sseConnection) {
+    sseConnection.abort();
+    sseConnection = null;
+  }
+  currentToken = null;
+  currentUser = null;
+  localStorage.removeItem('qg_token');
+  localStorage.removeItem('qg_user');
+  cachedThreatEvents = [];
+  for (const id of ['stat-total-events', 'stat-critical-alerts', 'stat-open-incidents', 'stat-active-decoys']) {
+    const node = document.getElementById(id);
+    if (node) node.textContent = '—';
+  }
+  for (const id of ['threat-table-body', 'decoys-table-body']) {
+    const node = document.getElementById(id);
+    if (node) node.replaceChildren();
+  }
+  const incidents = document.getElementById('incidents-list');
+  if (incidents) incidents.replaceChildren();
+  renderAuthStatus();
+  connectSSE();
+  navigateTo('dashboard');
 }
 
-function renderAuthUI() {
-  const container = document.getElementById('auth-controls');
+function renderAuthStatus() {
+  const container = document.getElementById('auth-container');
   if (!container) return;
-  if (API.currentUser) {
+
+  if (currentUser) {
     container.innerHTML = `
-      <div style="font-size:12px;font-family:var(--mono);display:flex;align-items:center;gap:8px;">
-        <span class="badge ${API.currentUser.role === 'admin' ? 'br' : 'bb'}">${API.currentUser.role.toUpperCase()}</span>
-        <span style="color:#fff;">${API.currentUser.username}</span>
-        <button class="btn btn-ghost btn-sm" onclick="handleLogout()" style="padding:2px 8px;font-size:11px;">Logout</button>
+      <div style="display:flex;align-items:center;gap:10px;font-size:13px;">
+        <span class="badge ${currentUser.role === 'admin' ? 'badge-critical' : 'badge-info'}">
+          ${escapeHTML(currentUser.role.toUpperCase())}
+        </span>
+        <span style="font-weight:600;">${escapeHTML(currentUser.username)}</span>
+        <button class="btn btn-secondary btn-sm" onclick="handleLogout()">Sign Out</button>
       </div>
     `;
   } else {
-    container.innerHTML = `<button class="btn btn-sm btn-outline" id="btn-login-modal" onclick="openLoginModal()">Login</button>`;
+    container.innerHTML = `
+      <button class="btn btn-secondary btn-sm" onclick="openLoginModal()">Sign In</button>
+    `;
   }
 }
 
-async function loadRealOverview() {
+// ── 3. Dashboard Overview & Real Telemetry ──
+async function refreshDashboard() {
+  if (!currentToken) {
+    const body = document.getElementById('overview-events-body');
+    if (body) body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:2rem;">Sign in to view operational telemetry.</td></tr>';
+    return;
+  }
   try {
-    const data = await API.getOverview();
-    const elLegit = document.getElementById('st-legit');
-    const elIntrusions = document.getElementById('st-intrusions');
-    const elFp = document.getElementById('st-fp');
-    const elThreat = document.getElementById('threat-val');
-    const elThreatFill = document.getElementById('threat-fill');
+    const res = await fetch(`${API_BASE}/api/v1/soc/overview`, { headers: getAuthHeaders() });
+    if (res.status === 401) throw new Error('Sign in to view operational telemetry.');
+    if (!res.ok) return;
+    const data = await res.json();
 
-    if (elLegit) elLegit.textContent = data.total_events;
-    if (elIntrusions) elIntrusions.textContent = data.critical_alerts;
-    if (elFp) elFp.textContent = data.open_incidents;
+    document.getElementById('stat-total-events').textContent = data.total_events;
+    document.getElementById('stat-critical-alerts').textContent = data.critical_alerts;
+    document.getElementById('stat-open-incidents').textContent = data.open_incidents;
+    document.getElementById('stat-active-decoys').textContent = data.active_decoys;
 
-    if (elThreat && elThreatFill) {
-      if (data.critical_alerts > 0) {
-        elThreat.textContent = 'CRITICAL';
-        elThreat.style.color = 'var(--red)';
-        elThreatFill.style.width = '100%';
-        elThreatFill.style.background = 'var(--red)';
-      } else if (data.open_incidents > 0) {
-        elThreat.textContent = 'ELEVATED';
-        elThreat.style.color = 'var(--amber)';
-        elThreatFill.style.width = '60%';
-        elThreatFill.style.background = 'var(--amber)';
-      } else {
-        elThreat.textContent = 'LOW';
-        elThreat.style.color = 'var(--green)';
-        elThreatFill.style.width = '15%';
-        elThreatFill.style.background = 'var(--green)';
-      }
-    }
+    // Load recent events preview
+    const evRes = await fetch(`${API_BASE}/api/v1/soc/events?limit=8`, { headers: getAuthHeaders() });
+    if (!evRes.ok) return;
+    const evData = await evRes.json();
+    renderOverviewEvents(evData.events || []);
   } catch (err) {
-    console.warn('Overview fetch error:', err);
+    console.error('Failed to refresh dashboard stats:', err);
   }
 }
 
-async function loadRealEvents() {
-  const tbody = document.getElementById('live-events-tbody');
-  const countBadge = document.getElementById('event-count-badge');
+function renderOverviewEvents(events) {
+  const tbody = document.getElementById('overview-events-body');
   if (!tbody) return;
 
-  try {
-    const data = await API.getEvents(50);
-    cachedEvents = data.events || [];
-    if (countBadge) countBadge.textContent = `${data.total} Total Events`;
-    renderEventsTable(cachedEvents);
-  } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--red);padding:2rem;">Failed to load events: ${err.message}</td></tr>`;
-  }
-}
-
-function renderEventsTable(events) {
-  const tbody = document.getElementById('live-events-tbody');
-  if (!tbody) return;
-
-  if (!events || events.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:2rem;">No security events recorded yet. Trigger a drill to simulate.</td></tr>`;
+  if (events.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--text-muted);">No security events recorded yet. Trigger a drill to simulate an attack.</td></tr>`;
     return;
   }
 
   tbody.innerHTML = events.map(e => {
-    const sevBadge = e.severity === 'CRITICAL' ? 'badge-crit' : (e.severity === 'HIGH' ? 'badge-high' : 'badge-open');
-    const timeFormatted = new Date(e.timestamp).toLocaleTimeString();
+    const sevBadge = e.severity === 'CRITICAL' ? 'badge-critical' : (e.severity === 'HIGH' ? 'badge-high' : 'badge-info');
+    const time = new Date(e.timestamp).toLocaleTimeString();
     return `
       <tr>
-        <td style="color:var(--text3);white-space:nowrap;">${timeFormatted}</td>
-        <td><span class="badge bb" style="font-size:10px;">${e.event_type}</span></td>
-        <td><span class="${sevBadge}">${e.severity}</span></td>
-        <td style="color:var(--accent);">${e.source_ip}</td>
-        <td style="color:var(--text2);font-size:11px;">${e.mitre_technique_id}</td>
-        <td style="color:#fff;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${e.message}">${e.message}</td>
+        <td style="color:var(--text-muted);">${time}</td>
+        <td><span class="badge badge-info">${escapeHTML(e.event_type)}</span></td>
+        <td><span class="badge ${sevBadge}">${escapeHTML(e.severity)}</span></td>
+        <td style="color:var(--text-main);font-weight:600;">${escapeHTML(e.source_ip)}</td>
+        <td style="color:var(--text-secondary);font-size:11px;">${escapeHTML(e.mitre_technique_id)}</td>
+        <td style="color:var(--text-main);max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHTML(e.message)}">${escapeHTML(e.message)}</td>
       </tr>
     `;
   }).join('');
 }
 
-function filterEventsTable(query) {
+// ── 4. Threats & Incidents ──
+async function loadThreatEvents() {
+  const tbody = document.getElementById('threat-table-body');
+  const countBadge = document.getElementById('threat-event-count');
+  if (!tbody) return;
+  if (!currentToken) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:2rem;">Sign in to view security events.</td></tr>';
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/soc/events?limit=100`, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error('API request failed');
+    const data = await res.json();
+    cachedThreatEvents = data.events || [];
+    if (countBadge) countBadge.textContent = `${data.total} Total Events`;
+    renderThreatTable(cachedThreatEvents);
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--danger);">Error loading events: ${err.message}</td></tr>`;
+  }
+}
+
+function renderThreatTable(events) {
+  const tbody = document.getElementById('threat-table-body');
+  if (!tbody) return;
+
+  if (events.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--text-muted);">No security events recorded.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = events.map(e => {
+    const sevBadge = e.severity === 'CRITICAL' ? 'badge-critical' : (e.severity === 'HIGH' ? 'badge-high' : 'badge-info');
+    const time = new Date(e.timestamp).toLocaleTimeString();
+    return `
+      <tr>
+        <td style="color:var(--text-muted);">${time}</td>
+        <td><span class="badge ${sevBadge}">${escapeHTML(e.severity)}</span></td>
+        <td style="color:var(--accent);font-weight:600;">${escapeHTML(e.source_ip)}</td>
+        <td style="font-size:11px;color:var(--text-secondary);">${escapeHTML(e.mitre_technique_id)}</td>
+        <td style="color:var(--text-main);">${escapeHTML(e.message)}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function filterThreats(query) {
   if (!query) {
-    renderEventsTable(cachedEvents);
+    renderThreatTable(cachedThreatEvents);
     return;
   }
   const q = query.toLowerCase();
-  const filtered = cachedEvents.filter(e => 
+  const filtered = cachedThreatEvents.filter(e =>
     (e.source_ip && e.source_ip.toLowerCase().includes(q)) ||
     (e.message && e.message.toLowerCase().includes(q)) ||
-    (e.event_type && e.event_type.toLowerCase().includes(q)) ||
-    (e.token_id && e.token_id.toLowerCase().includes(q))
+    (e.event_type && e.event_type.toLowerCase().includes(q))
   );
-  renderEventsTable(filtered);
+  renderThreatTable(filtered);
 }
 
-async function loadRealIncidents() {
-  const container = document.getElementById('incidents-container');
+async function loadIncidents() {
+  const container = document.getElementById('incidents-list');
   if (!container) return;
+  if (!currentToken) {
+    container.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:2rem;">Sign in to view incidents.</div>';
+    return;
+  }
 
   try {
-    const incidents = await API.getIncidents();
-    if (!incidents || incidents.length === 0) {
-      container.innerHTML = `<div style="text-align:center;color:var(--text3);font-size:12px;padding:2rem;">No active incidents. Threat level normal.</div>`;
+    const res = await fetch(`${API_BASE}/api/v1/soc/incidents`, { headers: getAuthHeaders() });
+    if (!res.ok) return;
+    const incidents = await res.json();
+
+    if (incidents.length === 0) {
+      container.innerHTML = `<div style="text-align:center;padding:2rem;color:var(--text-muted);font-size:13px;">No active incidents open.</div>`;
       return;
     }
 
     container.innerHTML = incidents.map(inc => {
       const isResolved = inc.status === 'RESOLVED' || inc.status === 'CLOSED';
-      const statusBadge = isResolved ? 'badge-resolved' : 'badge-open';
-      const sevBadge = inc.severity === 'CRITICAL' ? 'badge-crit' : 'badge-high';
+      const statusBadge = isResolved ? 'badge-success' : 'badge-high';
       return `
-        <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:12px;">
+        <div style="background:var(--bg-subtle);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-            <span class="${statusBadge}">${inc.status}</span>
-            <span class="${sevBadge}">${inc.severity}</span>
+            <span class="badge ${statusBadge}">${escapeHTML(inc.status)}</span>
+            <span style="font-size:11px;color:var(--text-muted);">${new Date(inc.created_at).toLocaleTimeString()}</span>
           </div>
-          <div style="font-weight:700;color:#fff;font-size:13px;margin-bottom:4px;">${inc.title}</div>
-          <div style="font-size:11px;color:var(--text2);margin-bottom:8px;">${inc.summary}</div>
-          <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border);padding-top:8px;">
-            <span style="font-size:10px;color:var(--text3);">${new Date(inc.created_at).toLocaleTimeString()}</span>
-            <div style="display:flex;gap:6px;">
-              ${!isResolved ? `
-                <button class="btn btn-ghost btn-sm" onclick="handleIncidentStatus('${inc.id}', 'INVESTIGATING')" style="padding:2px 8px;font-size:10px;">Investigate</button>
-                <button class="btn btn-sm btn-outline" onclick="handleIncidentStatus('${inc.id}', 'RESOLVED')" style="padding:2px 8px;font-size:10px;border-color:var(--green);color:var(--green);">Resolve</button>
-              ` : `
-                <span style="font-size:11px;color:var(--green);">✓ Resolved</span>
-              `}
-            </div>
+          <div style="font-weight:600;font-size:13px;margin-bottom:4px;color:var(--text-main);">${escapeHTML(inc.title)}</div>
+          <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;">${escapeHTML(inc.summary)}</div>
+          <div style="display:flex;gap:8px;">
+            ${!isResolved ? `
+              <button class="btn btn-secondary btn-sm" onclick="setIncidentStatus('${inc.id}', 'INVESTIGATING')">Investigate</button>
+              <button class="btn btn-primary btn-sm" onclick="setIncidentStatus('${inc.id}', 'RESOLVED')">Resolve</button>
+            ` : `<span style="font-size:12px;color:var(--success);font-weight:600;">✓ Resolved by Analyst</span>`}
           </div>
         </div>
       `;
     }).join('');
   } catch (err) {
-    container.innerHTML = `<div style="text-align:center;color:var(--red);font-size:12px;padding:1rem;">Error: ${err.message}</div>`;
+    container.innerHTML = `<div style="color:var(--danger);font-size:12px;">Error: ${err.message}</div>`;
   }
 }
 
-async function handleIncidentStatus(incidentId, status) {
+async function setIncidentStatus(id, newStatus) {
   try {
-    await API.updateIncidentStatus(incidentId, status, `Manual update by operator to ${status}`);
-    loadRealIncidents();
-    loadRealOverview();
-  } catch (err) {
-    alert(`Failed to update status: ${err.message}. (Ensure you are logged in as Analyst or Admin)`);
-  }
-}
-
-async function loadRealDecoys() {
-  const tbody = document.getElementById('decoys-tbody');
-  if (!tbody) return;
-
-  try {
-    const decoys = await API.getDecoys();
-    if (!decoys || decoys.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:2rem;">No decoys registered</td></tr>`;
-      return;
+    const res = await fetch(`${API_BASE}/api/v1/soc/incidents/${id}/status`, {
+      method: 'PATCH',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ status: newStatus, resolution_note: `Analyst marked as ${newStatus}` })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Operation failed. Please sign in with an Analyst/Admin account.');
     }
+    loadIncidents();
+    refreshDashboard();
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+// ── 5. Decoys & Traps ──
+async function loadDecoys() {
+  const tbody = document.getElementById('decoys-table-body');
+  if (!tbody) return;
+  if (!currentToken) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:2rem;">Sign in to view deception assets.</td></tr>';
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/soc/decoys`, { headers: getAuthHeaders() });
+    if (!res.ok) return;
+    const decoys = await res.json();
+
     tbody.innerHTML = decoys.map(d => `
       <tr>
-        <td style="color:#fff;font-weight:600;">${d.name}</td>
-        <td><span class="badge bb" style="font-size:10px;">${d.decoy_type}</span></td>
-        <td style="color:var(--text2);">${d.target_service}</td>
-        <td style="color:var(--accent);font-family:var(--mono);">${d.token_id}</td>
-        <td><span class="badge-resolved">${d.status}</span></td>
-        <td style="color:${d.access_count > 0 ? 'var(--red)' : 'var(--text3)'};font-weight:700;">${d.access_count}</td>
+        <td style="color:var(--text-main);font-weight:600;">${escapeHTML(d.name)}</td>
+        <td><span class="badge badge-info">${escapeHTML(d.decoy_type)}</span></td>
+        <td style="color:var(--text-secondary);">${escapeHTML(d.target_service)}</td>
+        <td style="color:var(--accent);font-family:var(--font-mono);">${escapeHTML(d.token_id)}</td>
+        <td><span class="badge badge-success">${escapeHTML(d.status)}</span></td>
+        <td style="color:${d.access_count > 0 ? 'var(--danger)' : 'var(--text-muted)'};font-weight:700;">${d.access_count}</td>
       </tr>
     `).join('');
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--red);padding:2rem;">Error: ${err.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--danger);padding:2rem;">Error: ${err.message}</td></tr>`;
   }
 }
 
-async function triggerBreachDrill() {
-  try {
-    const res = await API.simulateBreach('qtok_stripe_live_prod', '198.51.100.84');
-    termLog([
-      `<span class="t-crit">  [!] SECURITY DRILL TRIGGERED: ${res.alert_generated}</span>`,
-      `<span class="t-i">  → Incident Correlated ID: ${res.incident_id}</span>`
-    ]);
-    showPage('events', document.querySelectorAll('.nav-btn')[1]);
-    loadRealEvents();
-    loadRealIncidents();
-    loadRealOverview();
-  } catch (err) {
-    alert(`Drill failed: ${err.message}. If not logged in, please click Login.`);
-  }
+async function triggerDrill() {
+  executeDrill('qtok_stripe_live_prod', '198.51.100.42');
 }
 
-async function triggerCustomDrill() {
-  const select = document.getElementById('drill-token-select');
-  const ipInput = document.getElementById('drill-ip-input');
-  const resultBox = document.getElementById('drill-result-box');
-  const token = select ? select.value : 'qtok_stripe_live_prod';
-  const ip = ipInput ? ipInput.value.trim() : '198.51.100.84';
+async function executeCustomDrill() {
+  const token = document.getElementById('drill-target').value;
+  const ip = document.getElementById('drill-source-ip').value.trim() || '198.51.100.77';
+  executeDrill(token, ip);
+}
 
+async function executeDrill(tokenId, sourceIp) {
+  const box = document.getElementById('drill-output');
   try {
-    const res = await API.simulateBreach(token, ip);
-    if (resultBox) {
-      resultBox.style.display = 'block';
-      resultBox.textContent = `[SUCCESS] Event ID: ${res.event_id} | Alert: ${res.alert_generated} | Incident: ${res.incident_id}`;
+    const res = await fetch(`${API_BASE}/api/v1/soc/decoys/simulate-breach?token_id=${tokenId}&source_ip=${sourceIp}`, {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Drill failed. Please sign in as Analyst or Admin.');
     }
-    loadRealEvents();
-    loadRealIncidents();
-    loadRealOverview();
+
+    const data = await res.json();
+    if (box) {
+      box.style.display = 'block';
+      box.style.color = 'var(--success)';
+      box.innerHTML = `
+        <strong>[DRILL SUCCESS]</strong> Breach Event Emitted!<br>
+        Event ID: ${data.event_id}<br>
+        Alert: ${data.alert_generated}<br>
+        Incident Assigned: ${data.incident_id}
+      `;
+    }
+
+    refreshDashboard();
+    loadDecoys();
   } catch (err) {
-    alert(`Drill error: ${err.message}. Please login with analyst/admin account.`);
+    if (box) {
+      box.style.display = 'block';
+      box.style.color = 'var(--danger)';
+      box.textContent = `[ERROR] ${err.message}`;
+    } else {
+      alert(err.message);
+    }
   }
 }
 
-function exportData(format) {
-  window.open(`${window.location.origin}/api/v1/soc/reports/export?format=${format}`, '_blank');
+async function runDemoScenario() {
+  const startButton = document.getElementById('demo-start');
+  const resetButton = document.getElementById('demo-reset');
+  const status = document.getElementById('demo-status');
+  const timeline = document.getElementById('demo-timeline');
+  if (!currentToken) {
+    status.textContent = 'Sign in with an Analyst or Admin account before running a demo.';
+    return;
+  }
+  if (activeDemoRunId) {
+    status.textContent = 'Reset the current demo run before starting another scenario.';
+    return;
+  }
+
+  const scenario = document.getElementById('demo-scenario').value;
+  const sourceIp = document.getElementById('demo-source-ip').value.trim();
+  const requestedRunId = crypto.randomUUID();
+  const params = new URLSearchParams({ scenario, source_ip: sourceIp, demo_run_id: requestedRunId });
+  startButton.disabled = true;
+  status.textContent = 'Submitting the synthetic event to the SOC ingestion pipeline...';
+  timeline.replaceChildren();
+  try {
+    const response = await fetch(`${API_BASE}/api/v1/soc/decoys/simulate-breach?${params}`, {
+      method: 'POST',
+      headers: getAuthHeaders()
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || `Demo failed (${response.status})`);
+    activeDemoRunId = data.demo_run_id;
+    resetButton.disabled = false;
+    status.textContent = `Completed synthetic run ${data.demo_run_id}. Detection: ${data.alert_generated || 'no matching rule'}.`;
+    const stages = [
+      ['Scenario submitted', `Synthetic scenario: ${data.scenario}`],
+      ['Event persisted', `Event ID ${data.event_id}`],
+      ['Detection evaluated', data.alert_generated ? `Alert: ${data.alert_generated}` : 'No detection rule matched'],
+      ['Incident correlated', data.incident_id ? `Incident ID ${data.incident_id}` : 'No incident created'],
+      ['Audit recorded', 'The operator action and run identifier are retained in the audit log']
+    ];
+    for (const [title, detail] of stages) {
+      const item = document.createElement('div');
+      item.className = 'demo-timeline-item';
+      const heading = document.createElement('strong');
+      heading.textContent = title;
+      const description = document.createElement('span');
+      description.textContent = detail;
+      item.append(heading, description);
+      timeline.append(item);
+    }
+    refreshDashboard();
+    loadThreatEvents();
+    loadIncidents();
+    loadDecoys();
+  } catch (error) {
+    status.textContent = `Demo error: ${error.message}`;
+  } finally {
+    startButton.disabled = Boolean(activeDemoRunId);
+  }
 }
 
-function setupSSE() {
-  const sseDot = document.getElementById('sse-dot');
-  const sseLabel = document.getElementById('sse-status-label');
+async function resetDemoScenario() {
+  if (!activeDemoRunId) return;
+  if (!window.confirm('Remove this run’s synthetic events, alerts, and only its empty demo-owned incident?')) return;
+  const resetButton = document.getElementById('demo-reset');
+  const status = document.getElementById('demo-status');
+  const timeline = document.getElementById('demo-timeline');
+  resetButton.disabled = true;
+  try {
+    const response = await fetch(`${API_BASE}/api/v1/soc/demo/runs/${encodeURIComponent(activeDemoRunId)}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders()
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || `Reset failed (${response.status})`);
+    status.textContent = `Run reset. Removed ${data.events_removed} event(s) and ${data.alerts_removed} alert(s); audit record preserved.`;
+    activeDemoRunId = null;
+    timeline.replaceChildren();
+    document.getElementById('demo-start').disabled = false;
+    refreshDashboard();
+    loadThreatEvents();
+    loadIncidents();
+    loadDecoys();
+  } catch (error) {
+    status.textContent = `Reset error: ${error.message}`;
+    resetButton.disabled = false;
+  }
+}
 
-  API.connectSSE(
-    (eventMsg) => {
-      if (eventMsg.type === 'NEW_SECURITY_EVENT') {
-        const ev = eventMsg.event;
-        cachedEvents.unshift({
-          id: ev.id,
-          timestamp: ev.timestamp,
-          event_type: ev.event_type,
-          severity: ev.severity,
-          source_ip: ev.source_ip,
-          mitre_technique_id: ev.mitre.split(' - ')[0],
-          message: ev.message
-        });
-        renderEventsTable(cachedEvents);
-        loadRealOverview();
-        loadRealIncidents();
+function openDemoResearch() {
+  navigateTo('lab');
+  runBB84Test();
+  runNoiseExperiment();
+}
 
-        // Log into audit terminal
-        termLog([
-          `<span class="t-crit">  [LIVE SSE] ${ev.severity} alert from ${ev.source_ip} (${ev.event_type})</span>`,
-          `<span class="t-i">    ${ev.message}</span>`
-        ]);
+// ── 6. Quantum Laboratory Interactivity ──
+async function applyQubitGate(gate) {
+  const box = document.getElementById('bloch-result');
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/quantum/bloch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ theta: qubitTheta, phi: qubitPhi, apply_gate: gate === 'I' ? null : gate })
+    });
+    const data = await res.json();
+    if (box) {
+      box.innerHTML = `
+        Gate Applied: <span style="color:var(--accent);font-weight:700;">${gate}</span><br>
+        Statevector: [${data.statevector[0].real.toFixed(4)} + ${data.statevector[0].imag.toFixed(4)}i, ${data.statevector[1].real.toFixed(4)} + ${data.statevector[1].imag.toFixed(4)}i]<br>
+        Measurement: P(|0⟩) = ${(data.probabilities['|0>'] * 100).toFixed(1)}% | P(|1⟩) = ${(data.probabilities['|1>'] * 100).toFixed(1)}%<br>
+        Bloch Vector: (x=${data.bloch_coordinates.x.toFixed(3)}, y=${data.bloch_coordinates.y.toFixed(3)}, z=${data.bloch_coordinates.z.toFixed(3)})
+      `;
+    }
+  } catch (err) {
+    if (box) box.textContent = `Error: ${err.message}`;
+  }
+}
 
-        // Flash DB node in Network map
-        const node = document.getElementById('node-db');
-        if (node) {
-          node.classList.add('attacked');
-          setTimeout(() => node.classList.remove('attacked'), 2500);
+async function runBellTest() {
+  const box = document.getElementById('chsh-result');
+  try {
+    box.textContent = 'Measuring 1000 entangled Bell pairs...';
+    const res = await fetch(`${API_BASE}/api/v1/quantum/bell-chsh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trials: 1000 })
+    });
+    const data = await res.json();
+    box.innerHTML = `
+      CHSH Parameter S: <span style="color:var(--success);font-weight:700;font-size:14px;">${data.chsh_parameter_S}</span><br>
+      Classical Local Bound: ≤ ${data.classical_bound.toFixed(1)}<br>
+      Quantum Tsirelson Bound: ${data.tsirelson_quantum_bound.toFixed(4)}<br>
+      Status: <span class="badge badge-success">VIOLATES CLASSICAL BOUND (Non-Local)</span><br>
+      <span style="color:var(--text-secondary);font-size:11px;">Correlations: E(a1,b1)=${data.correlations['E(a1, b1)']} | E(a1,b2)=${data.correlations['E(a1, b2)']}</span>
+    `;
+  } catch (err) {
+    box.textContent = `Error: ${err.message}`;
+  }
+}
+
+async function runBellState() {
+  const box = document.getElementById('bell-state-result');
+  try {
+    const response = await fetch(`${API_BASE}/api/v1/quantum/bell-state`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ shots: 1024, seed: 42 })
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.detail || `Bell-state request failed (${response.status})`);
+    }
+    const data = await response.json();
+    box.innerHTML = `${data.state}<br>
+      Sample counts (|00⟩, |01⟩, |10⟩, |11⟩): ${data.sample_counts['00']}, ${data.sample_counts['01']}, ${data.sample_counts['10']}, ${data.sample_counts['11']}<br>
+      Reduced-state purity: ${data.reduced_state_purity.toFixed(3)} · Concurrence: ${data.concurrence.toFixed(1)} · Entangled: ${data.entangled ? 'yes' : 'no'}<br>
+      ${data.scientific_note}`;
+  } catch (error) {
+    box.textContent = `Error: ${error.message}`;
+  }
+}
+
+async function runBB84Test() {
+  const box = document.getElementById('bb84-result');
+  const eveCheck = document.getElementById('bb84-eve-check');
+  const eveIntercept = eveCheck ? eveCheck.checked : false;
+  const numBits = Number(document.getElementById('bb84-bits')?.value || 512);
+  const seed = Number(document.getElementById('bb84-seed')?.value || 84);
+  const eveProbability = Number(document.getElementById('bb84-eve-probability')?.value || 0);
+  const noiseRate = Number(document.getElementById('bb84-noise')?.value || 0);
+
+  try {
+    box.textContent = 'Running seeded BB84 transmission and basis sifting...';
+    const res = await fetch(`${API_BASE}/api/v1/quantum/bb84`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        num_bits: numBits,
+        eve_intercept: eveIntercept,
+        eve_probability: eveIntercept ? eveProbability : 0,
+        noise_rate: noiseRate,
+        seed
+      })
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.detail || `BB84 request failed (${res.status})`);
+    }
+    const data = await res.json();
+    const qberPercent = (data.qber * 100).toFixed(1);
+    const preview = (data.preview_table || []).map(row =>
+      `<tr><td>${row.index}</td><td>${row.alice_bit} (${row.alice_basis})</td><td>${row.bob_bit} (${row.bob_basis})</td><td>${row.sifted ? 'yes' : 'no'}</td></tr>`
+    ).join('');
+    box.innerHTML = `
+      Raw transmissions: ${data.total_raw_bits} · Matching-basis sifted bits: ${data.sifted_key_length} · Seed: ${seed}<br>
+      Alice raw key: ${data.alice_raw_key}<br>
+      Eve interception: ${data.eve_intercepted ? `${(data.eve_interception_probability * 100).toFixed(0)}%` : 'disabled'}<br>
+      QBER: <strong style="color:${data.experiment_accepted ? 'var(--success)' : 'var(--danger)'};">${qberPercent}%</strong>
+      (95% Wilson interval ${(data.qber_95_confidence_interval[0] * 100).toFixed(1)}–${(data.qber_95_confidence_interval[1] * 100).toFixed(1)}%; threshold ${(data.qber_threshold * 100).toFixed(0)}%)<br>
+      Decision: <span class="badge ${data.experiment_accepted ? 'badge-success' : 'badge-critical'}">${data.experiment_accepted ? 'ACCEPTED IN SIMULATOR' : 'KEY DISCARDED'}</span><br>
+      Alice/Bob sifted keys: ${data.alice_sifted_key || '(empty)'} / ${data.bob_sifted_key || '(empty)'}<br>
+      Candidate key material: ${data.candidate_key_material || '(discarded)'}<br>
+      Final key: not produced by this simulator (${data.key_status})
+      <details><summary>First transmitted signals (raw key data is shown for this educational simulation)</summary>
+      <table class="data-table"><thead><tr><th>Index</th><th>Alice bit/basis</th><th>Bob bit/basis</th><th>Sifted</th></tr></thead><tbody>${preview}</tbody></table></details>
+      <p class="lab-note">${data.scientific_note}</p>
+    `;
+  } catch (err) {
+    if (box) box.textContent = `Error: ${err.message}`;
+  }
+}
+
+async function runGroverTest() {
+  const box = document.getElementById('grover-result');
+  const numQubits = Number(document.getElementById('grover-qubits')?.value || 3);
+  const target = parseInt(document.getElementById('grover-target')?.value || '5', 10);
+  const trials = Number(document.getElementById('grover-trials')?.value || 1000);
+  const targetInput = document.getElementById('grover-target');
+  const size = 2 ** numQubits;
+  if (targetInput) {
+    targetInput.max = String(size - 1);
+  }
+  if (!Number.isInteger(target) || target < 0 || target >= size) {
+    box.textContent = `Choose a marked item from 0 to ${size - 1}.`;
+    return;
+  }
+
+  try {
+    box.textContent = `Benchmarking a ${size}-item search over ${trials} seeded trials...`;
+    const res = await fetch(`${API_BASE}/api/v1/quantum/grover/benchmark`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ num_qubits: numQubits, marked_states: [target], trials, seed: 2026 })
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.detail || `Grover request failed (${res.status})`);
+    }
+    const data = await res.json();
+    const theory = (data.theoretical_success_probability * 100).toFixed(1);
+    const observed = (data.empirical_success_probability * 100).toFixed(1);
+    box.innerHTML = `
+      Search space: ${data.search_space_size} · Marked items: ${data.marked_item_count} · Grover oracle queries: ${data.quantum_oracle_queries}<br>
+      Theoretical success: <strong>${theory}%</strong> · Empirical (${data.trials} trials): <strong>${observed}%</strong><br>
+      Classical expected queries under stated model: ${data.classical_expected_queries.toFixed(2)} · Simulator sampling time: ${(data.simulation_seconds * 1000).toFixed(2)} ms<br>
+      <progress max="1" value="${data.empirical_success_probability}" aria-label="Observed Grover success probability"></progress>
+      <p class="lab-note">${data.classical_query_assumption} ${data.query_complexity_note}</p>
+    `;
+  } catch (err) {
+    box.textContent = `Error: ${err.message}`;
+  }
+}
+
+function blochGraphic(vector, label) {
+  const x = 60 + vector.x * 36;
+  const y = 52 - vector.z * 36;
+  return `<svg viewBox="0 0 120 104" role="img" aria-label="${label} Bloch vector x ${vector.x.toFixed(2)}, y ${vector.y.toFixed(2)}, z ${vector.z.toFixed(2)}">
+    <circle cx="60" cy="52" r="36" fill="none" stroke="currentColor" opacity=".35"/>
+    <path d="M20 52h80M60 10v84" stroke="currentColor" opacity=".25"/>
+    <path d="M60 52L${x.toFixed(1)} ${y.toFixed(1)}" stroke="var(--accent)" stroke-width="2"/>
+    <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="var(--accent)"/>
+    <text x="60" y="101" text-anchor="middle" fill="currentColor" font-size="8">x/z projection · y=${vector.y.toFixed(2)}</text>
+  </svg>`;
+}
+
+function selectedNoiseAngles() {
+  const values = {
+    zero: [0, 0],
+    one: [Math.PI, 0],
+    plus: [Math.PI / 2, 0],
+    minus: [Math.PI / 2, Math.PI]
+  };
+  return values[document.getElementById('noise-state')?.value || 'plus'];
+}
+
+async function runNoiseExperiment() {
+  const box = document.getElementById('noise-result');
+  const [theta, phi] = selectedNoiseAngles();
+  const probability = Number(document.getElementById('noise-strength')?.value || 0);
+  const channel = document.getElementById('noise-channel')?.value || 'bit_flip';
+  try {
+    box.textContent = 'Calculating channel output...';
+    const res = await fetch(`${API_BASE}/api/v1/quantum/noise`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel, probability, theta, phi })
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.detail || `Noise request failed (${res.status})`);
+    }
+    const data = await res.json();
+    box.innerHTML = `
+      <div class="bloch-pair">${blochGraphic(data.bloch_before, 'Before noise')}${blochGraphic(data.bloch_after, 'After noise')}</div>
+      Channel: ${data.channel} · Strength: ${data.probability.toFixed(2)} · Fidelity: ${data.fidelity.toFixed(4)} · Purity: ${data.purity.toFixed(4)}<br>
+      Trace: ${data.trace.toFixed(6)} · Minimum density-matrix eigenvalue: ${data.minimum_eigenvalue.toExponential(2)}<br>
+      Bloch vector before: (${data.bloch_before.x.toFixed(3)}, ${data.bloch_before.y.toFixed(3)}, ${data.bloch_before.z.toFixed(3)})<br>
+      Bloch vector after: (${data.bloch_after.x.toFixed(3)}, ${data.bloch_after.y.toFixed(3)}, ${data.bloch_after.z.toFixed(3)})<br>
+      ${data.scientific_note}
+    `;
+  } catch (error) {
+    box.textContent = `Error: ${error.message}`;
+  }
+}
+
+async function runRepetitionCode() {
+  const box = document.getElementById('noise-result');
+  const code = document.getElementById('code-type')?.value || 'bit_flip';
+  const errorQubit = Number(document.getElementById('code-error-qubit')?.value || 1);
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/quantum/repetition-code`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, logical_bit: 1, error_qubit: errorQubit })
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.detail || `Repetition-code request failed (${res.status})`);
+    }
+    const data = await res.json();
+    box.innerHTML = `
+      <strong>${data.code.replace('_', '-')} code</strong> · Injected error: q${data.error_qubit}<br>
+      Encoded logical state: ${data.encoded_logical_state} · Stabilizers: ${data.stabilizers}<br>
+      Measured syndrome: (${data.syndrome.join(', ')}) · Apply ${data.correction_gate} to: ${data.correction_qubit === null ? 'none' : `q${data.correction_qubit}`}<br>
+      Recovered logical bit: ${data.recovered_logical_bit ?? 'not measured'} · ${data.recovered ? 'single matching error corrected' : 'recovery unsuccessful'}<br>
+      ${data.limitation}
+    `;
+  } catch (error) {
+    box.textContent = `Error: ${error.message}`;
+  }
+}
+
+async function runTeleportation() {
+  const box = document.getElementById('teleport-result');
+  const theta = Number(document.getElementById('teleport-theta')?.value || 0);
+  const phi = Number(document.getElementById('teleport-phi')?.value || 0);
+  try {
+    box.textContent = 'Executing three-qubit teleportation circuit...';
+    const res = await fetch(`${API_BASE}/api/v1/quantum/teleportation`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ theta, phi })
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.detail || `Teleportation request failed (${res.status})`);
+    }
+    const data = await res.json();
+    const outcomes = data.measurement_outcomes.map(item =>
+      `${item.classical_bits}: ${(item.probability * 100).toFixed(1)}%`
+    ).join(' · ');
+    box.innerHTML = `
+      Bell measurement outcomes: ${outcomes}<br>
+      Classical communication: ${data.classical_bits_sent}<br>
+      State fidelity after conditional correction: <strong>${data.fidelity.toFixed(8)}</strong><br>
+      Input Bloch vector: (${data.bloch_input.x.toFixed(3)}, ${data.bloch_input.y.toFixed(3)}, ${data.bloch_input.z.toFixed(3)})<br>
+      Reconstructed Bloch vector: (${data.bloch_reconstructed.x.toFixed(3)}, ${data.bloch_reconstructed.y.toFixed(3)}, ${data.bloch_reconstructed.z.toFixed(3)})<br>
+      ${data.scientific_note}
+    `;
+  } catch (error) {
+    box.textContent = `Error: ${error.message}`;
+  }
+}
+
+// ── 7. Reports Export ──
+async function exportData(format) {
+  const btn = document.getElementById(`btn-export-${format}`);
+  const statusEl = document.getElementById('export-status');
+
+  if (!currentToken) {
+    if (statusEl) {
+      statusEl.style.color = 'var(--danger)';
+      statusEl.textContent = '⚠ Please sign in to export data. Click "Sign In" in the top-right corner.';
+      statusEl.style.display = 'block';
+    } else {
+      alert('Please sign in to download reports.');
+    }
+    return;
+  }
+
+  try {
+    if (btn) { btn.disabled = true; btn.textContent = 'Preparing...'; }
+    if (statusEl) { statusEl.textContent = `Generating ${format.toUpperCase()} export...`; statusEl.style.color = 'var(--text-secondary)'; statusEl.style.display = 'block'; }
+
+    const res = await fetch(`${API_BASE}/api/v1/soc/reports/export?format=${format}`, {
+      headers: getAuthHeaders()
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Export failed (${res.status})`);
+    }
+
+    const blob = await res.blob();
+    const filename = format === 'csv' ? 'quantumguard_security_export.csv' : 'quantumguard_security_export.json';
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    if (statusEl) {
+      statusEl.style.color = 'var(--success)';
+      statusEl.textContent = `✓ ${filename} downloaded successfully.`;
+    }
+  } catch (err) {
+    if (statusEl) {
+      statusEl.style.color = 'var(--danger)';
+      statusEl.textContent = `✗ Export failed: ${err.message}`;
+    } else {
+      alert(`Export error: ${err.message}`);
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = format === 'csv' ? 'Download CSV Export' : 'Download JSON Export'; }
+  }
+}
+
+// ── 7b. Markdown Document Viewer ──
+async function loadMarkdownDoc(docName) {
+  const container = document.getElementById('markdown-viewer-content');
+  const title = document.getElementById('markdown-viewer-title');
+  if (!container) return;
+
+  // Update active tab
+  document.querySelectorAll('.doc-tab').forEach(t => t.classList.remove('active'));
+  const activeTab = document.querySelector(`.doc-tab[data-doc="${docName}"]`);
+  if (activeTab) activeTab.classList.add('active');
+
+  container.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted);">Loading document...</div>';
+  if (title) title.textContent = docName.replace(/_/g, ' ');
+
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/soc/docs/${docName}`);
+    if (!res.ok) throw new Error(`Document not found (${res.status})`);
+    const md = await res.text();
+
+    // Use marked.js if available, otherwise render as preformatted text
+    if (window.marked) {
+      container.innerHTML = `<div class="md-body">${window.marked.parse(md)}</div>`;
+    } else {
+      // Lightweight fallback renderer
+      container.innerHTML = `<div class="md-body">${renderMarkdownFallback(md)}</div>`;
+    }
+  } catch (err) {
+    container.innerHTML = `<div style="color:var(--danger);padding:2rem;">Error loading document: ${err.message}</div>`;
+  }
+}
+
+function renderMarkdownFallback(md) {
+  // Basic markdown → HTML conversion for when marked.js is unavailable
+  let html = md
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') // XSS safety first
+    .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')           // code blocks
+    .replace(/`([^`]+)`/g, '<code>$1</code>')                             // inline code
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/^\*\*(.+?)\*\*/gm, '<strong>$1</strong>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/^\* (.+)$/gm, '<li>$1</li>')
+    .replace(/^- (.+)$/gm, '<li>$1</li>')
+    .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/\n{2,}/g, '</p><p>')
+    .replace(/\n/g, '<br>');
+  return `<p>${html}</p>`;
+}
+
+// ── 8. Real-time Server-Sent Events (SSE) ──
+async function connectSSE() {
+  if (sseConnection) sseConnection.abort();
+  const sseBadge = document.getElementById('sse-badge');
+  const sseLabel = document.getElementById('sse-label');
+  if (!currentToken) {
+    if (sseLabel) sseLabel.textContent = 'SIGN IN FOR LIVE STREAM';
+    return;
+  }
+
+  const controller = new AbortController();
+  sseConnection = controller;
+  try {
+    const response = await fetch(`${API_BASE}/api/v1/soc/stream`, {
+      headers: getAuthHeaders(),
+      signal: controller.signal
+    });
+    if (response.status === 401) {
+      handleLogout();
+      openLoginModal();
+      const errBox = document.getElementById('login-error');
+      if (errBox) {
+        errBox.textContent = 'Your saved sign-in has expired. Please sign in again.';
+        errBox.style.display = 'block';
+      }
+      return;
+    }
+    if (!response.ok || !response.body) {
+      throw new Error(`SSE connection failed (${response.status})`);
+    }
+    if (sseBadge) sseBadge.className = 'live-badge';
+    if (sseLabel) sseLabel.textContent = 'SSE LIVE';
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const messages = buffer.split('\n\n');
+      buffer = messages.pop() || '';
+      for (const message of messages) {
+        const line = message.split('\n').find(part => part.startsWith('data: '));
+        if (!line) continue;
+        try {
+          const data = JSON.parse(line.slice(6));
+          if (data.type === 'NEW_SECURITY_EVENT') {
+            cachedThreatEvents.unshift(data.event);
+            renderThreatTable(cachedThreatEvents);
+            refreshDashboard();
+            loadIncidents();
+          }
+        } catch (error) {
+          console.warn('Ignoring malformed SSE message:', error);
         }
       }
-    },
-    (status) => {
-      if (sseLabel) sseLabel.textContent = `SSE ${status}`;
-      if (sseDot) {
-        sseDot.style.background = status === 'ONLINE' ? 'var(--green)' : 'var(--amber)';
-      }
     }
-  );
+  } catch (error) {
+    if (error.name !== 'AbortError') {
+      if (sseLabel) sseLabel.textContent = 'STREAM UNAVAILABLE';
+      console.warn('SSE connection ended:', error);
+      if (currentToken) window.setTimeout(connectSSE, 3000);
+    }
+  }
 }
 
-// ── Application Initialization ───────────────────────────────────────────────
-function initApp() {
-  initBB84Data();
-  renderSandboxWires();
-  renderBB84Table();
-  updateBB84StepDetails();
-
-  renderAuthUI();
-  loadRealOverview();
-  setupSSE();
-
-  setTimeout(() => {
-    termLog([
-      `<span class="t-p">quantum@guard:~$ </span><span class="t-i">Connected to QuantumGuard Enterprise API</span>`,
-      `<span class="t-ok">  [✓] Live Server-Sent Events (SSE) telemetry armed</span>`,
-      `<span class="t-ok">  [✓] Database models, persistent incidents, and SIEM pipeline active</span>`,
-      `<span class="t-p">  →</span> <span class="t-i">Default Admin user ready: <span class="t-v">admin</span></span>`
-    ]);
-  }, 200);
-
-  // Initialize network paths
-  drawNetworkPaths();
-  window.addEventListener('resize', drawNetworkPaths);
-  
-  const activeNode = document.getElementById('node-db');
-  if (activeNode) activeNode.classList.add('active');
+// ── 9. Initialization ──
+async function init() {
+  if (currentToken) {
+    try {
+      const response = await fetch(`${API_BASE}/api/v1/auth/me`, {
+        headers: getAuthHeaders()
+      });
+      if (response.status === 401) {
+        handleLogout();
+        openLoginModal();
+        const errBox = document.getElementById('login-error');
+        if (errBox) {
+          errBox.textContent = 'Your saved sign-in has expired. Please sign in again.';
+          errBox.style.display = 'block';
+        }
+        return;
+      }
+      if (response.ok) {
+        currentUser = await response.json();
+        localStorage.setItem('qg_user', JSON.stringify(currentUser));
+      }
+    } catch (error) {
+      console.warn('Could not validate the saved sign-in:', error);
+    }
+  }
+  renderAuthStatus();
+  refreshDashboard();
+  connectSSE();
 }
 
-window.addEventListener('DOMContentLoaded', initApp);
+// Expose methods to global window scope for inline HTML handlers
+window.navigateTo = navigateTo;
+window.openLoginModal = openLoginModal;
+window.closeLoginModal = closeLoginModal;
+window.handleLogin = handleLogin;
+window.handleLogout = handleLogout;
+window.refreshDashboard = refreshDashboard;
+window.loadThreatEvents = loadThreatEvents;
+window.filterThreats = filterThreats;
+window.loadIncidents = loadIncidents;
+window.setIncidentStatus = setIncidentStatus;
+window.loadDecoys = loadDecoys;
+window.triggerDrill = triggerDrill;
+window.executeCustomDrill = executeCustomDrill;
+window.runDemoScenario = runDemoScenario;
+window.resetDemoScenario = resetDemoScenario;
+window.openDemoResearch = openDemoResearch;
+window.applyQubitGate = applyQubitGate;
+window.runBellTest = runBellTest;
+window.runBellState = runBellState;
+window.runBB84Test = runBB84Test;
+window.runGroverTest = runGroverTest;
+window.runNoiseExperiment = runNoiseExperiment;
+window.runRepetitionCode = runRepetitionCode;
+window.runTeleportation = runTeleportation;
+window.exportData = exportData;
+window.loadMarkdownDoc = loadMarkdownDoc;
 
-const AppBindings = {
-  showPage,
-  switchResource,
-  updateQubitCfg,
-  updateThreshCfg,
-  clearLog,
-  quickAccess,
-  runBatch,
-  runFullSim,
-  selectAtk,
-  runLegitDemo,
-  switchSandboxTab,
-  updateNoiseCfg,
-  updateAngleCfg,
-  toggleSandboxGate,
-  toggleSandboxBasis,
-  clearSandboxCircuit,
-  runSandboxMeasurement,
-  stepBB84,
-  goToBB84Step,
-  toggleEveIntercept,
-  showTab,
-  runAnalytics,
-  buildReport,
-  openLoginModal,
-  closeLoginModal,
-  handleLoginSubmit,
-  handleLogout,
-  loadRealEvents,
-  filterEventsTable,
-  loadRealIncidents,
-  handleIncidentStatus,
-  loadRealDecoys,
-  triggerBreachDrill,
-  triggerCustomDrill,
-  exportData
-};
-Object.assign(window, AppBindings);
-window.QuantumGuard = AppBindings;
-
+document.addEventListener('DOMContentLoaded', () => {
+  const strength = document.getElementById('noise-strength');
+  const strengthValue = document.getElementById('noise-strength-value');
+  strength?.addEventListener('input', () => {
+    if (strengthValue) strengthValue.value = Number(strength.value).toFixed(2);
+  });
+  document.getElementById('grover-qubits')?.addEventListener('change', event => {
+    const target = document.getElementById('grover-target');
+    const maxTarget = 2 ** Number(event.target.value) - 1;
+    if (target) {
+      target.max = String(maxTarget);
+      if (Number(target.value) > maxTarget) target.value = String(maxTarget);
+    }
+  });
+  for (const [sliderId, outputId, digits] of [
+    ['bb84-eve-probability', 'bb84-eve-value', 2],
+    ['bb84-noise', 'bb84-noise-value', 2]
+  ]) {
+    const slider = document.getElementById(sliderId);
+    const output = document.getElementById(outputId);
+    slider?.addEventListener('input', () => {
+      if (output) output.value = Number(slider.value).toFixed(digits);
+    });
+  }
+  init();
+});

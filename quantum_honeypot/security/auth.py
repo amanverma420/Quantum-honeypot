@@ -16,11 +16,36 @@ from ..db.database import get_db
 from ..db.models import User
 
 # Configuration
-SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "quantumguard-enterprise-super-secret-key-32chars!!")
+DEFAULT_SECRET_KEY = "quantumguard-enterprise-super-secret-key-32chars!!"
+SECRET_KEY = os.environ.get("JWT_SECRET_KEY") or DEFAULT_SECRET_KEY
 TOKEN_EXPIRY_SECONDS = int(os.environ.get("TOKEN_EXPIRY_SECONDS", 86400)) # 24 hours
 PBKDF2_ITERATIONS = 600000
 
 security_scheme = HTTPBearer(auto_error=False)
+
+
+def validate_security_configuration() -> None:
+    """Fail startup on unsafe production JWT configuration."""
+    if TOKEN_EXPIRY_SECONDS < 1:
+        raise RuntimeError("TOKEN_EXPIRY_SECONDS must be a positive integer.")
+    if os.environ.get("ENVIRONMENT", "development").lower() == "production":
+        secret = os.environ.get("JWT_SECRET_KEY", "")
+        if len(secret.encode("utf-8")) < 32 or secret == DEFAULT_SECRET_KEY:
+            raise RuntimeError(
+                "Production requires JWT_SECRET_KEY with at least 32 bytes of unique random material."
+            )
+
+
+def get_secret_key() -> str:
+    """Return the configured JWT secret, honoring runtime environment overrides."""
+    return os.environ.get("JWT_SECRET_KEY") or SECRET_KEY or DEFAULT_SECRET_KEY
+
+
+def get_token_expiry_seconds(expires_delta: Optional[int] = None) -> int:
+    """Resolve the expiry interval without treating zero as 'use default' value."""
+    if expires_delta is None:
+        return TOKEN_EXPIRY_SECONDS
+    return int(expires_delta)
 
 def hash_password(password: str) -> str:
     """Hash a password using PBKDF2-HMAC-SHA256 with 600,000 iterations and 16-byte salt."""
@@ -39,6 +64,8 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         iterations = int(parts[1])
         salt = bytes.fromhex(parts[2])
         stored_key = bytes.fromhex(parts[3])
+        if not 1 <= iterations <= 2_000_000 or len(salt) < 16 or len(stored_key) != 32:
+            return False
         new_key = hashlib.pbkdf2_hmac("sha256", plain_password.encode("utf-8"), salt, iterations)
         return secrets.compare_digest(new_key, stored_key)
     except Exception:
@@ -47,7 +74,8 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def create_access_token(data: Dict[str, Any], expires_delta: Optional[int] = None) -> str:
     """Create a tamper-proof cryptographically signed token (HMAC-SHA256)."""
     to_encode = data.copy()
-    expire = int(time.time()) + (expires_delta or TOKEN_EXPIRY_SECONDS)
+    expiry_seconds = get_token_expiry_seconds(expires_delta)
+    expire = int(time.time()) + expiry_seconds
     to_encode.update({"exp": expire, "iat": int(time.time()), "iss": "quantumguard-soc"})
     
     header = {"alg": "HS256", "typ": "JWT"}
@@ -55,7 +83,7 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[int] = Non
     payload_b64 = base64.urlsafe_b64encode(json.dumps(to_encode).encode()).decode().rstrip("=")
     
     signature_base = f"{header_b64}.{payload_b64}".encode()
-    signature = hmac.new(SECRET_KEY.encode(), signature_base, hashlib.sha256).digest()
+    signature = hmac.new(get_secret_key().encode(), signature_base, hashlib.sha256).digest()
     sig_b64 = base64.urlsafe_b64encode(signature).decode().rstrip("=")
     
     return f"{header_b64}.{payload_b64}.{sig_b64}"
@@ -70,7 +98,7 @@ def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
         
         # Verify signature
         signature_base = f"{header_b64}.{payload_b64}".encode()
-        expected_sig = hmac.new(SECRET_KEY.encode(), signature_base, hashlib.sha256).digest()
+        expected_sig = hmac.new(get_secret_key().encode(), signature_base, hashlib.sha256).digest()
         expected_sig_b64 = base64.urlsafe_b64encode(expected_sig).decode().rstrip("=")
         
         if not secrets.compare_digest(sig_b64, expected_sig_b64):
@@ -81,8 +109,16 @@ def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
         padded = payload_b64 + ("=" * (4 - rem) if rem else "")
         payload = json.loads(base64.urlsafe_b64decode(padded.encode()).decode())
         
-        # Check expiration
-        if "exp" in payload and int(time.time()) > payload["exp"]:
+        if not isinstance(payload, dict) or payload.get("iss") != "quantumguard-soc" or "exp" not in payload:
+            return None
+        # Tokens are invalid at or after their expiry instant.
+        try:
+            if isinstance(payload["exp"], bool):
+                return None
+            exp_ts = int(payload["exp"])
+        except (TypeError, ValueError):
+            return None
+        if int(time.time()) >= exp_ts:
             return None
             
         return payload

@@ -39,8 +39,12 @@ def init_db():
         # 1. Bootstrap default admin & analyst if not exists
         admin_user = db.query(User).filter(User.username == "admin").first()
         if not admin_user:
-            # Default dev password configured via env or secure fallback
-            default_admin_pass = os.environ.get("INITIAL_ADMIN_PASSWORD", "QuantumGuard@Admin2026")
+            default_admin_pass = os.environ.get("INITIAL_ADMIN_PASSWORD")
+            if not default_admin_pass or len(default_admin_pass) < 12:
+                raise RuntimeError(
+                    "Set INITIAL_ADMIN_PASSWORD to a unique password of at least 12 characters "
+                    "before initializing a new database."
+                )
             db.add(User(
                 username="admin",
                 password_hash=hash_password(default_admin_pass),
@@ -48,11 +52,13 @@ def init_db():
             ))
 
         analyst_user = db.query(User).filter(User.username == "analyst").first()
-        if not analyst_user:
-            default_analyst_pass = os.environ.get("INITIAL_ANALYST_PASSWORD", "AnalystSecure!Pass2026")
+        analyst_password = os.environ.get("INITIAL_ANALYST_PASSWORD")
+        if not analyst_user and analyst_password:
+            if len(analyst_password) < 12:
+                raise RuntimeError("INITIAL_ANALYST_PASSWORD must contain at least 12 characters.")
             db.add(User(
                 username="analyst",
-                password_hash=hash_password(default_analyst_pass),
+                password_hash=hash_password(analyst_password),
                 role="analyst"
             ))
 

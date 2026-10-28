@@ -59,7 +59,12 @@ class QuantumLab:
         }
 
     @staticmethod
-    def simulate_circuit(n_qubits: int, gate_list: List[Dict[str, Any]], shots: int = 1024) -> Dict[str, Any]:
+    def simulate_circuit(
+        n_qubits: int,
+        gate_list: List[Dict[str, Any]],
+        shots: int = 1024,
+        seed: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """Simulate an arbitrary multi-qubit circuit up to 8 qubits."""
         dim = 2 ** n_qubits
         state = np.zeros(dim, dtype=complex)
@@ -129,7 +134,7 @@ class QuantumLab:
 
         # Sample measurement shots
         indices = np.arange(dim)
-        samples = np.random.choice(indices, size=shots, p=probs)
+        samples = np.random.default_rng(seed).choice(indices, size=shots, p=probs)
         counts = {}
         for idx in samples:
             b_str = f"{idx:0{n_qubits}b}"
@@ -149,6 +154,7 @@ class QuantumLab:
             "n_qubits": n_qubits,
             "gate_count": len(gate_list),
             "shots": shots,
+            "seed": seed,
             "counts": counts,
             "active_states": state_repr
         }
@@ -204,44 +210,46 @@ class QuantumLab:
         }
 
     @staticmethod
-    def bb84_simulation(num_bits: int = 32, eve_intercept: bool = False, noise_rate: float = 0.0) -> Dict[str, Any]:
+    def bb84_simulation(
+        num_bits: int = 32,
+        eve_intercept: bool = False,
+        noise_rate: float = 0.0,
+        eve_probability: float = 1.0,
+        qber_threshold: float = 0.11,
+        seed: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """Simulate BB84 Quantum Key Distribution protocol step by step."""
-        alice_bits = [random.randint(0, 1) for _ in range(num_bits)]
-        alice_bases = [random.choice(["+", "x"]) for _ in range(num_bits)]
-        bob_bases = [random.choice(["+", "x"]) for _ in range(num_bits)]
+        rng = random.Random(seed)
+        alice_bits = [rng.randint(0, 1) for _ in range(num_bits)]
+        alice_bases = [rng.choice(["+", "x"]) for _ in range(num_bits)]
+        bob_bases = [rng.choice(["+", "x"]) for _ in range(num_bits)]
 
         transmitted_bits = list(alice_bits)
-        eve_bases = []
-        eve_measurements = []
-
-        if eve_intercept:
-            for i in range(num_bits):
-                e_base = random.choice(["+", "x"])
-                eve_bases.append(e_base)
-                # Eve measures in her basis
-                if e_base == alice_bases[i]:
-                    measured = alice_bits[i]
-                else:
-                    measured = random.randint(0, 1) # Collapse in non-orthogonal basis
-                eve_measurements.append(measured)
-                # Eve resends to Bob
-                transmitted_bits[i] = measured
-        else:
-            eve_bases = ["-"] * num_bits
-            eve_measurements = ["-"] * num_bits
+        eve_bases: List[Optional[str]] = [None] * num_bits
+        eve_measurements: List[Optional[int]] = [None] * num_bits
+        intercepted = [False] * num_bits
+        for i in range(num_bits):
+            if eve_intercept and rng.random() < eve_probability:
+                intercepted[i] = True
+                eve_bases[i] = rng.choice(["+", "x"])
+                eve_measurements[i] = (
+                    alice_bits[i]
+                    if eve_bases[i] == alice_bases[i]
+                    else rng.randint(0, 1)
+                )
+                transmitted_bits[i] = eve_measurements[i]
 
         # Bob measures transmitted photons
         bob_bits = []
         for i in range(num_bits):
-            if bob_bases[i] == alice_bases[i]:
-                # Matching basis: gets transmitted bit unless channel noise flipped it
+            source_basis = eve_bases[i] if intercepted[i] else alice_bases[i]
+            if bob_bases[i] == source_basis:
                 bit = transmitted_bits[i]
-                if random.random() < noise_rate:
-                    bit = 1 - bit
-                bob_bits.append(bit)
             else:
-                # Non-matching basis: random 50/50 outcome
-                bob_bits.append(random.randint(0, 1))
+                bit = rng.randint(0, 1)
+            if rng.random() < noise_rate:
+                bit = 1 - bit
+            bob_bits.append(bit)
 
         # Sifting phase: Alice and Bob publicly announce bases
         sifted_alice = []
@@ -256,7 +264,17 @@ class QuantumLab:
         # Calculate Quantum Bit Error Rate (QBER)
         errors = sum(1 for a, b in zip(sifted_alice, sifted_bob) if a != b)
         qber = (errors / len(sifted_alice)) if sifted_alice else 0.0
-        secure = qber < 0.11 # Standard QKD security cutoff (approx 11%)
+        # Approximate Wilson interval communicates finite-sample uncertainty.
+        n_sifted = len(sifted_alice)
+        if n_sifted:
+            z = 1.96
+            denominator = 1 + z * z / n_sifted
+            center = (qber + z * z / (2 * n_sifted)) / denominator
+            margin = z * math.sqrt(qber * (1 - qber) / n_sifted + z * z / (4 * n_sifted**2)) / denominator
+            qber_interval = [max(0.0, center - margin), min(1.0, center + margin)]
+        else:
+            qber_interval = [0.0, 1.0]
+        secure = bool(n_sifted and qber < qber_threshold)
 
         steps_detail = []
         for i in range(min(num_bits, 16)):
@@ -264,7 +282,8 @@ class QuantumLab:
                 "index": i,
                 "alice_bit": alice_bits[i],
                 "alice_basis": alice_bases[i],
-                "eve_basis": eve_bases[i] if eve_intercept else "None",
+                "eve_intercepted": intercepted[i],
+                "eve_basis": eve_bases[i] or "None",
                 "bob_basis": bob_bases[i],
                 "bob_bit": bob_bits[i],
                 "basis_match": alice_bases[i] == bob_bases[i],
@@ -273,23 +292,41 @@ class QuantumLab:
 
         return {
             "total_raw_bits": num_bits,
+            "alice_raw_key": "".join(map(str, alice_bits)),
+            "alice_bases": alice_bases,
+            "bob_bases": bob_bases,
             "sifted_key_length": len(sifted_alice),
             "eve_intercepted": eve_intercept,
+            "eve_interception_probability": eve_probability if eve_intercept else 0.0,
             "channel_noise_rate": noise_rate,
             "bit_errors": errors,
             "qber": round(qber, 4),
+            "qber_95_confidence_interval": [round(value, 4) for value in qber_interval],
+            "qber_threshold": qber_threshold,
             "channel_secure": secure,
+            "experiment_accepted": secure,
             "alice_sifted_key": "".join(map(str, sifted_alice)),
             "bob_sifted_key": "".join(map(str, sifted_bob)),
+            "candidate_key_material": "".join(map(str, sifted_alice)) if secure else "",
+            "final_key": "",
+            "key_status": (
+                "candidate only; no error correction, privacy amplification, or authentication is implemented"
+                if secure else "discarded by the configured QBER threshold"
+            ),
             "preview_table": steps_detail,
-            "scientific_note": "Eve intercepting causes ~25% QBER on sifted bits due to non-orthogonal state collapse."
+            "scientific_note": (
+                "In ideal BB84 with independently random bases, full random-basis intercept-resend "
+                "produces an expected 25% QBER on sifted bits. This educational simulator is not a "
+                "composable security proof or production QKD implementation."
+            )
         }
 
     @staticmethod
     def grover_search(num_qubits: int = 3, target_state: int = 5) -> Dict[str, Any]:
         """Educational demonstration of Grover's quantum search algorithm."""
         dim = 2 ** num_qubits
-        target_state = max(0, min(dim - 1, target_state))
+        if not 0 <= target_state < dim:
+            raise ValueError("target_state must be within the configured search space")
         
         # 1. Uniform superposition |s> = H^{\otimes n} |0>
         state = np.ones(dim, dtype=complex) / np.sqrt(dim)

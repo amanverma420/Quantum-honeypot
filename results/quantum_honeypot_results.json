@@ -1,0 +1,69 @@
+{
+  "project": "QuantumGuard",
+  "version": "3.0.0",
+  "timestamp": "2026-10-28T05:51:38Z",
+  "bloch_sample": {
+    "theta": 1.0471975511965976,
+    "phi": 0.7853981633974483,
+    "coords": [
+      0.6124,
+      0.6124,
+      0.5
+    ]
+  },
+  "chsh_experiment": {
+    "S_measured": 2.8194,
+    "classical_bound": 2.0,
+    "tsirelson_bound": 2.828427,
+    "violated": true
+  },
+  "bb84_simulation": {
+    "qber_eavesdropped": 0.2524,
+    "qber_clean": 0.0012,
+    "sifted_length": 1018,
+    "wilson_ci": [
+      0.2265,
+      0.2801
+    ],
+    "threshold_breached": true
+  },
+  "uqcm_experiment": {
+    "mean_fidelity": 0.8042,
+    "max_fidelity": 0.8329,
+    "theoretical_ceiling": 0.833333,
+    "strictly_enforced": true
+  },
+  "telemetry_benchmarks": {
+    "incidents": [
+      {
+        "trap": "HTTP Decoy :8080",
+        "tactic": "Initial Access",
+        "technique": "T1190",
+        "mttd_ms": 14.2,
+        "quantum_sentinel_tripped": true
+      },
+      {
+        "trap": "SSH Bastion :2222",
+        "tactic": "Credential Access",
+        "technique": "T1110",
+        "mttd_ms": 18.5,
+        "quantum_sentinel_tripped": true
+      },
+      {
+        "trap": "Canary Tripwire",
+        "tactic": "Collection",
+        "technique": "T1005",
+        "mttd_ms": 8.7,
+        "quantum_sentinel_tripped": true
+      },
+      {
+        "trap": "BB84 Decoy QKD",
+        "tactic": "Defense Evasion",
+        "technique": "T1557",
+        "mttd_ms": 5.1,
+        "quantum_sentinel_tripped": true
+      }
+    ],
+    "mean_mttd_ms": 11.625
+  }
+}

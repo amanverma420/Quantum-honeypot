@@ -2,7 +2,8 @@
 
 import pytest
 from quantum_honeypot.security.auth import (
-    hash_password, verify_password, create_access_token, decode_access_token
+    hash_password, verify_password, create_access_token, decode_access_token,
+    validate_security_configuration,
 )
 
 def test_password_hashing_and_verification():
@@ -32,3 +33,27 @@ def test_expired_token():
     # Expired 10 seconds ago
     token = create_access_token(payload, expires_delta=-10)
     assert decode_access_token(token) is None
+
+
+def test_zero_expiry_token_is_rejected_immediately():
+    payload = {"sub": "viewer1", "role": "viewer"}
+    token = create_access_token(payload, expires_delta=0)
+    assert decode_access_token(token) is None
+
+
+def test_jwt_secret_override_is_used_at_runtime(monkeypatch):
+    monkeypatch.setenv("JWT_SECRET_KEY", "a-runtime-secret-value-long-enough-for-testing")
+    token = create_access_token({"sub": "analyst1", "role": "analyst"}, expires_delta=60)
+    assert decode_access_token(token)["sub"] == "analyst1"
+    monkeypatch.setenv("JWT_SECRET_KEY", "a-different-runtime-secret-value")
+    assert decode_access_token(token) is None
+
+
+def test_production_configuration_rejects_default_jwt_secret(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.delenv("JWT_SECRET_KEY", raising=False)
+    with pytest.raises(RuntimeError, match="Production requires JWT_SECRET_KEY"):
+        validate_security_configuration()
+
+    monkeypatch.setenv("JWT_SECRET_KEY", "a" * 64)
+    validate_security_configuration()

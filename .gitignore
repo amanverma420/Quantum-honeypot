@@ -1,5 +1,6 @@
 # Python runtime
 __pycache__/
+.pytest_cache/
 *.py[cod]
 *.pyo
 *.pyd
@@ -37,3 +38,6 @@ node_modules/
 # Env secrets
 .env
 .env.local
+*.db
+*.sqlite
+*.sqlite3

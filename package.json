@@ -1,7 +1,7 @@
 {
   "name": "quantum-honeypot",
-  "version": "2.0.0",
-  "description": "QuantumGuard – Quantum Honeypot Intrusion Detection System (v2.0)",
+  "version": "3.0.0",
+  "description": "QuantumGuard – Deception Operations and Quantum Research Platform (v3.0)",
   "private": true,
   "type": "module",
   "scripts": {

@@ -10,6 +10,9 @@ QuantumGuard is architected as a hardened modular platform:
 - **Backend & API**: Python 3.11 / FastAPI running asynchronous endpoints, detection rules, and Server-Sent Events (SSE).
 - **Database Layer**: SQLAlchemy ORM with SQLite for zero-config local development, and PostgreSQL 16+ for enterprise production.
 - **Frontend SOC Dashboard**: Single-Page Web Dashboard communicating via REST API and live SSE stream (`/api/v1/soc/stream`).
+- **Access Control**: Operational SOC data requires a bearer token; analyst/admin roles are required for changes and demo triggers.
+- **Research**: Public, input-bounded quantum simulations include Kraus noise channels, repetition codes, Bell-state entanglement, teleportation, seeded BB84, and Grover benchmarks.
+- **Demo Center**: Synthetic events are tagged by run ID and ingested through the same pipeline as sensor events. Quantum experiments run separately and do not produce alerts.
 - **Decoy Services**: Attacker-facing isolated trap daemons (HTTP on 8080, SSH on 2222, Filesystem Canaries) reporting to the central ingestion pipeline.
 
 ---
@@ -27,6 +30,8 @@ Create a production `.env` file based on `.env.example`:
 | `JWT_SECRET_KEY` | 32+ character signing key | Generated cryptographically |
 | `TOKEN_EXPIRY_SECONDS`| Bearer token validity period | `86400` (24 hours) |
 | `INITIAL_ADMIN_PASSWORD` | First-run administrator password | Set via environment |
+| `INITIAL_ANALYST_PASSWORD` | Optional first-run analyst password | Set via environment if needed |
+| `POSTGRES_PASSWORD` | PostgreSQL password used by Compose | Unique URL-safe random string |
 | `ALLOWED_ORIGINS` | Permitted frontend CORS origins | `https://your-soc-domain.com` |
 | `DECOY_BIND_HOST` | Decoy trap interface binding | `127.0.0.1` (loopback by default) |
 
@@ -43,7 +48,8 @@ cd Quantum-honeypot
 
 # 2. Configure environment
 cp .env.example .env
-# Edit .env with your production credentials and secrets
+# Set POSTGRES_PASSWORD, JWT_SECRET_KEY (32+ random bytes), and INITIAL_ADMIN_PASSWORD.
+# Do not commit .env. Existing database accounts are not automatically rotated.
 
 # 3. Launch stack
 docker-compose up -d --build

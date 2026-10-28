@@ -1,27 +1,35 @@
 """FastAPI Enterprise Application for QuantumGuard Deception & SOC Platform."""
 
 import os
+import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
-from ..db.database import init_db
+from ..db.database import get_db, init_db
+from ..db.models import User
+from ..security.auth import validate_security_configuration
 from .auth_router import router as auth_router
 from .soc_router import router as soc_router
 from .quantum_router import router as quantum_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize database schemas and seed default administrator
+    validate_security_configuration()
     init_db()
     yield
+
+
+_logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="QuantumGuard Enterprise Platform API",
     description="Deception Technology, Honeypot Intrusion Detection, and Quantum Computing Research Laboratory",
-    version="2.4.0",
+    version="3.0.0",
     lifespan=lifespan
 )
 
@@ -57,21 +65,19 @@ app.include_router(quantum_router)
 @app.get("/healthz", tags=["System Health"])
 def health_check():
     """Liveness check endpoint."""
-    return {"status": "HEALTHY", "service": "quantumguard-api", "version": "2.4.0"}
+    return {"status": "HEALTHY", "service": "quantumguard-api", "version": "3.0.0"}
 
 @app.get("/readyz", tags=["System Health"])
-def readiness_check():
+def readiness_check(db: Session = Depends(get_db)):
     """Readiness check validating database and core service availability."""
     try:
-        from ..db.database import SessionLocal
-        with SessionLocal() as db:
-            from ..db.models import User
-            admin = db.query(User).filter(User.username == "admin").first()
-            if not admin:
-                return JSONResponse(status_code=503, content={"status": "NOT_READY", "reason": "Admin user missing"})
+        admin = db.query(User).filter(User.username == "admin").first()
+        if not admin:
+            return JSONResponse(status_code=503, content={"status": "NOT_READY", "reason": "Admin user missing"})
         return {"status": "READY", "database": "CONNECTED"}
-    except Exception as e:
-        return JSONResponse(status_code=503, content={"status": "NOT_READY", "reason": str(e)})
+    except SQLAlchemyError:
+        _logger.exception("Database readiness probe failed.")
+        return JSONResponse(status_code=503, content={"status": "NOT_READY", "reason": "Database unavailable"})
 
 # Mount static frontend directory for unified deployment
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -96,3 +102,7 @@ def serve_styles():
     if os.path.exists(css_path):
         return FileResponse(css_path, media_type="text/css")
     return JSONResponse(status_code=404, content={"error": "styles.css not found"})
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return Response(status_code=204)

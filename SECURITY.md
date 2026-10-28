@@ -4,10 +4,12 @@
 
 - **Password Storage**: NIST SP 800-63B compliant `PBKDF2-HMAC-SHA256` with `600,000` iterations and a 16-byte cryptographically secure random salt generated via `secrets.token_bytes()`.
 - **Session Tokens**: Tamper-proof HMAC-SHA256 signed bearer tokens with explicit `exp` expiration, `iat` timestamp, and constant-time signature verification.
+- **Secret Configuration**: New databases require an environment-provided administrator password. Production startup rejects missing or short JWT signing keys; never deploy with the development-only fallback.
 - **Server-Side Enforcement**:
   - `Admin`: Full system configuration, user provisioning, audit logging, decoy management.
   - `Analyst`: Incident investigation, alert acknowledgement, manual note annotation, security drill execution.
   - `Viewer`: Read-only access to filtered events, analytics, and sanitized CSV/JSON report exports.
+- **Read Routes**: SOC overview, events, alerts, incidents, assets, exports, and SSE require viewer-capable or authenticated access. Mutations require analyst/admin authorization.
 
 ---
 
@@ -29,10 +31,26 @@
 | `RULE-METADATA-02` | `T1552.005` | Unsecured Credentials: Cloud Metadata | Probe to `/latest/meta-data` or `/security-credentials` |
 | `RULE-AUTH-03` | `T1110` | Brute Force | Multiple failed logins against web portal or SSH decoy |
 | `RULE-CORRELATION-04` | `T1046` | Network Service Discovery | Same source IP touching $\ge 2$ distinct decoys in 5 mins |
-| `RULE-CANARY-05` | `T1565.001` | Data Manipulation: Stored Data | Canary file access or timestamp update |
+| `RULE-HONEYTOKEN-01` | `T1552.001` | Unsecured Credentials: In Files | Credential and canary-token access |
 
 ---
 
 ## 4. Responsible Disclosure & Security Reporting
 
 To report security vulnerabilities or misconfigurations, please contact the repository security maintainers or open a confidential security advisory on GitHub.
+
+## 5. Synthetic Demo Boundaries
+
+The Demo Center accepts only bounded scenarios and documentation-range source
+addresses are recommended. Each event is marked synthetic, carries a demo-run
+identifier, and enters the normal ingestion pipeline. Reset removes only events
+and alerts tagged to that run, and deletes an incident only when it was created
+for that run and has no remaining alerts or analyst notes. Reset audit records
+are retained. Quantum research runs independently and are not security controls.
+
+## 6. Remaining Operational Limits
+
+This repository does not currently implement a general API rate limiter,
+production QKD key reconciliation/privacy amplification, hardware quantum
+execution, or a full database migration toolchain. Restrict network exposure
+and use a deployment-level rate limiter for production-facing services.

@@ -1,8 +1,8 @@
 """Pydantic schemas for QuantumGuard Honeypot System."""
 
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
-from pydantic import BaseModel, Field
+from typing import Dict, Any, List, Optional, Literal
+from pydantic import BaseModel, Field, model_validator
 
 class TokenBase(BaseModel):
     token_id: str
@@ -125,13 +125,47 @@ class SOCStatsResponse(BaseModel):
 # Quantum API Schemas
 class QuantumCircuitRequest(BaseModel):
     qubits: int = Field(ge=1, le=8, default=2)
-    gates: List[Dict[str, Any]]  # e.g. [{"gate": "H", "target": 0}, {"gate": "CNOT", "control": 0, "target": 1}]
+    gates: List[Dict[str, Any]] = Field(max_length=256)
     shots: int = Field(ge=10, le=10000, default=1024)
+    seed: Optional[int] = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def validate_gate_operations(self):
+        for item in self.gates:
+            gate = item.get("gate")
+            if not isinstance(gate, str) or gate.upper() not in {"I", "X", "Y", "Z", "H", "S", "T", "CNOT", "SWAP"}:
+                raise ValueError(f"Unsupported gate: {gate}")
+            gate = gate.upper()
+            if gate in {"I", "X", "Y", "Z", "H", "S", "T"}:
+                target = item.get("target")
+                if not isinstance(target, int) or isinstance(target, bool) or not 0 <= target < self.qubits:
+                    raise ValueError("Single-qubit gate target must be within the circuit")
+            elif gate == "CNOT":
+                control, target = item.get("control"), item.get("target")
+                if (
+                    not isinstance(control, int) or isinstance(control, bool)
+                    or not isinstance(target, int) or isinstance(target, bool)
+                    or not 0 <= control < self.qubits
+                    or not 0 <= target < self.qubits
+                    or control == target
+                ):
+                    raise ValueError("CNOT requires distinct control and target qubits in range")
+            else:
+                q1, q2 = item.get("q1"), item.get("q2")
+                if (
+                    not isinstance(q1, int) or isinstance(q1, bool)
+                    or not isinstance(q2, int) or isinstance(q2, bool)
+                    or not 0 <= q1 < self.qubits
+                    or not 0 <= q2 < self.qubits
+                    or q1 == q2
+                ):
+                    raise ValueError("SWAP requires distinct q1 and q2 qubits in range")
+        return self
 
 class SingleQubitStateRequest(BaseModel):
     theta: float = Field(ge=0.0, le=3.14159265, default=1.5707963)
     phi: float = Field(ge=0.0, le=6.2831853, default=0.0)
-    apply_gate: Optional[str] = None  # X, Y, Z, H, S, T
+    apply_gate: Optional[Literal["I", "X", "Y", "Z", "H", "S", "T"]] = None
 
 class NoiseChannelRequest(BaseModel):
     channel_type: str  # depolarizing, bit_flip, phase_flip, amplitude_damping
@@ -146,10 +180,53 @@ class BellCHSHRequest(BaseModel):
     theta_b2: float = 2.356194490192345  # 3*pi/4
 
 class BB84SimulationRequest(BaseModel):
-    num_bits: int = Field(ge=10, le=256, default=32)
+    num_bits: int = Field(ge=10, le=50000, default=32)
     eve_intercept: bool = False
     noise_rate: float = Field(ge=0.0, le=0.5, default=0.0)
+    eve_probability: float = Field(ge=0.0, le=1.0, default=1.0)
+    qber_threshold: float = Field(ge=0.0, le=0.5, default=0.11)
+    seed: Optional[int] = None
 
 class GroverSearchRequest(BaseModel):
     num_qubits: int = Field(ge=2, le=4, default=3)
     target_state: int = Field(ge=0, default=5)
+
+    @model_validator(mode="after")
+    def target_fits_search_space(self):
+        if self.target_state >= 2 ** self.num_qubits:
+            raise ValueError("target_state must be within the configured search space")
+        return self
+
+class NoiseExperimentRequest(BaseModel):
+    channel: Literal["bit_flip", "phase_flip", "depolarizing", "amplitude_damping", "phase_damping"]
+    probability: float = Field(ge=0.0, le=1.0, default=0.05)
+    theta: float = Field(ge=0.0, le=3.141592653589793, default=1.5707963267948966)
+    phi: float = Field(ge=0.0, le=6.283185307179586, default=0.0)
+
+class TeleportationRequest(BaseModel):
+    theta: float = Field(ge=0.0, le=3.141592653589793, default=1.5707963267948966)
+    phi: float = Field(ge=0.0, le=6.283185307179586, default=0.0)
+
+class BellStateRequest(BaseModel):
+    shots: int = Field(ge=1, le=10000, default=1024)
+    seed: Optional[int] = Field(default=None, ge=0)
+
+class RepetitionCodeRequest(BaseModel):
+    code: Literal["bit_flip", "phase_flip"]
+    logical_bit: int = Field(ge=0, le=1, default=0)
+    error_qubit: int = Field(ge=0, le=2, default=1)
+
+class GroverBenchmarkRequest(BaseModel):
+    num_qubits: int = Field(ge=2, le=10, default=3)
+    marked_states: List[int] = Field(min_length=1, max_length=1024)
+    trials: int = Field(ge=1, le=10000, default=1000)
+    seed: Optional[int] = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def marked_indices_fit_search_space(self):
+        size = 2 ** self.num_qubits
+        if len(set(self.marked_states)) != len(self.marked_states):
+            raise ValueError("marked_states must not contain duplicates")
+        if any(index < 0 or index >= size for index in self.marked_states):
+            raise ValueError("marked_states must be within the configured search space")
+        return self

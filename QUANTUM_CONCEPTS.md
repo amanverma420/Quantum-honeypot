@@ -78,3 +78,58 @@ In the BB84 protocol (Bennett & Brassard, 1984):
 4. **Intrusion Detection via QBER**:
    - If an eavesdropper (Eve) intercepts and resends qubits, non-orthogonal state collapse induces a theoretical **25% Quantum Bit Error Rate (QBER)** on sifted bits.
    - If QBER exceeds the security threshold ($\approx 11\%$), the session is aborted.
+
+The simulator estimates QBER from sifted bits and reports a 95% Wilson
+interval. If QBER reaches the configured threshold (default 11%), the
+educational session discards its candidate key. With independently random
+preparation, interception, and measurement bases, full random-basis
+intercept-resend gives expected sifted-key QBER 25% in the ideal asymptotic
+model. Finite samples fluctuate. This simplified simulator is not a composable
+security proof, an authenticated protocol, or production QKD.
+
+---
+
+## 6. Noise Channels and State Metrics
+
+The API's `/api/v1/quantum/noise` operation starts with a pure density matrix
+$\rho = |\psi\rangle\langle\psi|$ and applies a completely positive,
+trace-preserving map $\mathcal{E}(\rho) = \sum_k K_k \rho K_k^\dagger$.
+The implemented Kraus operators satisfy $\sum_k K_k^\dagger K_k = I$:
+
+- Bit flip: $\{\sqrt{1-p}I,\sqrt{p}X\}$.
+- Phase flip: $\{\sqrt{1-p}I,\sqrt{p}Z\}$.
+- Depolarizing: $\{\sqrt{1-p}I,\sqrt{p/3}X,\sqrt{p/3}Y,\sqrt{p/3}Z\}$.
+- Amplitude damping: $K_0=\mathrm{diag}(1,\sqrt{1-p})$, with decay operator
+  $K_1=\begin{pmatrix}0&\sqrt p\\0&0\end{pmatrix}$.
+- Phase damping: $K_0=\mathrm{diag}(1,\sqrt{1-p})$ and
+  $K_1=\mathrm{diag}(0,\sqrt p)$.
+
+Purity is $\mathrm{Tr}(\rho^2)$; because the input is pure, state fidelity is
+$\langle\psi|\rho_{\mathrm{out}}|\psi\rangle$. Responses report trace and
+minimum eigenvalue as numerical validity checks. The three-qubit repetition
+demonstrations correct only the corresponding single bit- or phase-flip error;
+they do not correct arbitrary quantum errors.
+
+## 7. Quantum Teleportation
+
+The simulator prepares an input qubit and $|\Phi^+\rangle$, applies the
+Bell-measurement circuit, conditions on both measured classical bits, and
+applies $X^{m_1}Z^{m_0}$ to Bob's qubit. It combines corrected branches into an
+output density matrix and compares it with the original pure state. Ideal
+statevector simulation yields unit fidelity up to floating-point error.
+Teleportation requires two classical bits and an entangled pair; it neither
+copies an unknown state nor transmits information faster than light.
+
+## 8. Grover Search Benchmark
+
+For $N=2^n$ candidates and $M$ marked states, let
+$\theta=\arcsin\sqrt{M/N}$. After $r$ Grover iterations the success probability
+is $\sin^2((2r+1)\theta)$; the selected iteration count is the nearest
+non-negative integer to $\pi/(4\theta)-1/2$. Repeated seeded Bernoulli trials
+estimate that theoretical probability. The classical comparison assumes
+random sequential search without replacement and known $M$, with expected
+queries $(N+1)/(M+1)$.
+
+The asymptotic $O(\sqrt{N/M})$ advantage is an oracle-query statement. Reported
+Python sampling time measures simulator bookkeeping only; it is not quantum
+hardware runtime or evidence of practical hardware advantage.

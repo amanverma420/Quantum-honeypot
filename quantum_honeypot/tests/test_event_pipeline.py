@@ -65,3 +65,8 @@ def test_pipeline_ingest_honeytoken_breach():
         incident = db.query(Incident).filter(Incident.id == alert.incident_id).first()
         assert incident is not None
         assert "198.51.100.42" in incident.title
+
+        duplicate, duplicate_alert = PIPELINE.ingest(event_create, db)
+        assert duplicate.id == db_event.id
+        assert duplicate_alert.id == alert.id
+        assert db.query(SecurityEvent).count() == 1

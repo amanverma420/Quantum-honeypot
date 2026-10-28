@@ -4,9 +4,18 @@ import math
 from fastapi import APIRouter, HTTPException, Query
 from ..schemas.models import (
     SingleQubitStateRequest, QuantumCircuitRequest, BellCHSHRequest,
-    BB84SimulationRequest, GroverSearchRequest
+    BB84SimulationRequest, GroverSearchRequest, NoiseExperimentRequest,
+    TeleportationRequest, RepetitionCodeRequest, GroverBenchmarkRequest,
+    BellStateRequest
 )
 from ..core.quantum_lab import QuantumLab
+from ..core.advanced_lab import (
+    grover_benchmark,
+    bell_state_experiment,
+    noise_experiment,
+    repetition_code_experiment,
+    teleportation_experiment,
+)
 
 router = APIRouter(prefix="/api/v1/quantum", tags=["Quantum Laboratory"])
 
@@ -25,7 +34,8 @@ def simulate_circuit(req: QuantumCircuitRequest):
     return QuantumLab.simulate_circuit(
         n_qubits=req.qubits,
         gate_list=req.gates,
-        shots=req.shots
+        shots=req.shots,
+        seed=req.seed,
     )
 
 @router.post("/bell-chsh")
@@ -39,7 +49,10 @@ def run_bb84_simulation(req: BB84SimulationRequest):
     return QuantumLab.bb84_simulation(
         num_bits=req.num_bits,
         eve_intercept=req.eve_intercept,
-        noise_rate=req.noise_rate
+        noise_rate=req.noise_rate,
+        eve_probability=req.eve_probability,
+        qber_threshold=req.qber_threshold,
+        seed=req.seed,
     )
 
 @router.post("/grover")
@@ -68,3 +81,28 @@ def demonstrate_no_cloning(theta: float = Query(1.5707963, ge=0.0, le=3.14159265
             "from copying ordinary classical files, passwords, or API keys."
         )
     }
+
+@router.post("/noise")
+def run_noise_experiment(req: NoiseExperimentRequest):
+    """Apply a validated single-qubit CPTP noise channel and report state metrics."""
+    return noise_experiment(req.theta, req.phi, req.channel, req.probability)
+
+@router.post("/repetition-code")
+def run_repetition_code(req: RepetitionCodeRequest):
+    """Demonstrate the supported single-error correction of a three-qubit repetition code."""
+    return repetition_code_experiment(req.code, req.logical_bit, req.error_qubit)
+
+@router.post("/teleportation")
+def run_teleportation(req: TeleportationRequest):
+    """Execute the Bell-pair, measurement, classical-bit, and correction teleportation circuit."""
+    return teleportation_experiment(req.theta, req.phi)
+
+@router.post("/bell-state")
+def run_bell_state(req: BellStateRequest):
+    """Prepare a Bell pair and report entanglement validation and measurement samples."""
+    return bell_state_experiment(req.shots, req.seed)
+
+@router.post("/grover/benchmark")
+def run_grover_benchmark(req: GroverBenchmarkRequest):
+    """Compare theoretical amplitude amplification with seeded repeated trials."""
+    return grover_benchmark(req.num_qubits, req.marked_states, req.trials, req.seed)
