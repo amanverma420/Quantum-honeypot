@@ -1,8 +1,9 @@
 # QuantumGuard: A Quantum-Classical Cyber Deception Platform for Zero-Trust Intrusion Detection
 
-**Authors:** Aman Verma*, Om Shingare*, Advait Chaudhari*, Rohit Rao*, V. K. Pachghare†, P. U. Chokakkar†  
-*Department of Computer Science & Engineering, COEP Technological University, Pune, India  
+**Authors:** Aman Verma*, Rohit Bhagat*, Ayan Ashraf*, Ankit Raj*, Dr. Mukta Nivelkar†  
+*COEP Technological University, Pune, India  
 †Faculty Guide, Department of Computer Science & Engineering, COEP Technological University, Pune, India  
+Emails: `{vermaap23.comp, rohitb23.civil, ayana23.meta, ankitr23.civil, mmn.comp}@coeptech.ac.in`  
 
 > **Official Research Paper**: The complete 15-page publication-grade IEEE research paper is compiled and available for direct download: [📄 Download Quantum-Honeypot-Research-Paper.pdf](/api/v1/soc/paper/download).
 

@@ -12,12 +12,12 @@
 \title{Quantum-Enhanced Cyber Deception and Proactive Defensive Intelligence: A Hybrid Physical-Layer and Threat-Informed Honeypot Platform for Enterprise Security Assessment}
 
 \author{
-    Aman~Verma$^{*}$,~Om~Shingare$^{*}$,~Advait~Chaudhari$^{*}$,~Rohit~Rao$^{*}$,~V.~K.~Pachghare$^{\dagger}$,~P.~U.~Chokakkar$^{\dagger}$\\
+    Aman~Verma$^{*}$,~Rohit~Bhagat$^{*}$,~Ayan~Ashraf$^{*}$,~Ankit~Raj$^{*}$,~Dr.~Mukta~Nivelkar$^{\dagger}$\\
     \vspace{0.2em}
-    $^{*}$Student, Dept. of Computer Science \& Engineering, COEP Technological University, Pune, India\\
+    $^{*}$Student, COEP Technological University, Pune, India\\
     $^{\dagger}$Faculty Guide, Dept. of Computer Science \& Engineering, COEP Technological University, Pune, India\\
     \vspace{0.2em}
-    \small{\{vermaap23.comp, shingareop24.comp, advaitac23.comp, rohitrr23.comp, vkp.comp, puc.comp\}@coeptech.ac.in}
+    \small{\{vermaap23.comp, rohitb23.civil, ayana23.meta, ankitr23.civil, mmn.comp\}@coeptech.ac.in}
 }
 
 \maketitle
@@ -31,14 +31,14 @@ Quantum honeypots, cyber deception, entanglement verification, Bell-CHSH inequal
 \end{IEEEkeywords}
 
 \section{Introduction}
-\IEEEPARstart{T}{he} relentless escalation of targeted cyber attacks, ransomware campaigns, and Advanced Persistent Threats (APTs) has fundamentally undermined the reliability of perimeter-only defense models. Modern threat actors readily bypass traditional preventative controls---such as firewalls, Intrusion Prevention Systems (IPS), and Endpoint Detection and Response (EDR) agents---by exploiting zero-day vulnerabilities, leveraging living-off-the-land binaries (LOLBins), and utilizing compromised legitimate credentials~\cite{wang2025quantum}. Once an adversary successfully breaches an internal enterprise subnet, they traverse the infrastructure silently, performing reconnaissance, harvesting cloud tokens, and escalating privileges while blending indistinguishably into benign background operational traffic.
+\IEEEPARstart{T}{he} relentless escalation of targeted cyber attacks, ransomware campaigns, and Advanced Persistent Threats (APTs) has fundamentally undermined the reliability of perimeter-only defense models. Modern threat actors readily bypass traditional preventative controls---such as firewalls, Intrusion Prevention Systems (IPS), and Endpoint Detection and Response (EDR) agents---by exploiting zero-day vulnerabilities, leveraging living-off-the-land binaries (LOLBins), and utilizing compromised legitimate credentials~\cite{wang2024quantum}. Once an adversary successfully breaches an internal enterprise subnet, they traverse the infrastructure silently, performing reconnaissance, harvesting cloud tokens, and escalating privileges while blending indistinguishably into benign background operational traffic.
 
-To address this structural asymmetry, cyber deception technology---principally honeypots, honeytokens, and decoys---has emerged as a foundational proactive defense discipline. Unlike traditional monitoring systems that analyze massive volumes of noisy network traffic to detect signatures of malicious activity, deception systems operate on a deterministic postulate: \emph{decoy assets have zero legitimate operational purpose}. Consequently, any read, write, execution, or connection attempt directed at a properly deployed honeypot represents a verified, high-fidelity intrusion attempt, delivering actionable threat telemetry with near-zero false-positive rates~\cite{gupta2025canary}.
+To address this structural asymmetry, cyber deception technology---principally honeypots, honeytokens, and decoys---has emerged as a foundational proactive defense discipline. Unlike traditional monitoring systems that analyze massive volumes of noisy network traffic to detect signatures of malicious activity, deception systems operate on a deterministic postulate: \emph{decoy assets have zero legitimate operational purpose}. Consequently, any read, write, execution, or connection attempt directed at a properly deployed honeypot represents a verified, high-fidelity intrusion attempt, delivering actionable threat telemetry with near-zero false-positive rates~\cite{gupta2024canary}.
 
 \subsection{Background and Motivation}
-Despite their conceptual elegance, contemporary classical honeypots (such as Cowrie, Dionaea, and Canarytokens) suffer from a critical physical vulnerability: \emph{observational passivity}~\cite{zhao2024adversarial}. In classical digital computing, information is represented as discrete binary bits (0 or 1) that can be read, copied, and duplicated an arbitrary number of times without inducing the slightest physical or computational disturbance to the host medium. An adversary inspecting a fake configuration file, reading an AWS credential string from a development server, or issuing probe packets to an emulated SSH port can passively record the target's parameters, run timing analysis, fingerprint hypervisor artifacts, and identify the trap before initiating state-changing actions~\cite{alvarez2025quantum}.
+Despite their conceptual elegance, contemporary classical honeypots (such as Cowrie, Dionaea, and Canarytokens) suffer from a critical physical vulnerability: \emph{observational passivity}~\cite{zhao2024adversarial}. In classical digital computing, information is represented as discrete binary bits (0 or 1) that can be read, copied, and duplicated an arbitrary number of times without inducing the slightest physical or computational disturbance to the host medium. An adversary inspecting a fake configuration file, reading an AWS credential string from a development server, or issuing probe packets to an emulated SSH port can passively record the target's parameters, run timing analysis, fingerprint hypervisor artifacts, and identify the trap before initiating state-changing actions~\cite{alvarez2024quantum}.
 
-The physical laws of quantum mechanics provide an entirely different paradigm for defensive information security. Fundamental quantum theorems---most notably the Heisenberg Uncertainty Principle, the quantum measurement postulate (Born rule), the No-Cloning Theorem, and Bell non-locality---dictate that an unknown quantum state cannot be observed, measured, or cloned without permanently perturbing its wavefunction~\cite{alvarez2025quantum,li2025universal}. While Quantum Key Distribution (QKD) has successfully exploited these principles to establish provably secure point-to-point communication links~\cite{zhang2024physical,mora2025qkd}, the systematic application of quantum informational sentinels to enterprise cyber deception and honeypot infrastructure remains predominantly nascent. 
+The physical laws of quantum mechanics provide an entirely different paradigm for defensive information security. Fundamental quantum theorems---most notably the Heisenberg Uncertainty Principle, the quantum measurement postulate (Born rule), the No-Cloning Theorem, and Bell non-locality---dictate that an unknown quantum state cannot be observed, measured, or cloned without permanently perturbing its wavefunction~\cite{alvarez2024quantum,li2024universal}. While Quantum Key Distribution (QKD) has successfully exploited these principles to establish provably secure point-to-point communication links~\cite{zhang2024physical,mora2024qkd}, the systematic application of quantum informational sentinels to enterprise cyber deception and honeypot infrastructure remains predominantly nascent. 
 
 Furthermore, with the formalization of Post-Quantum Cryptography (PQC) standards by the National Institute of Standards and Technology (NIST FIPS 203, 204, 205)~\cite{nist2024pqc}, modern security architectures must prepare for a threat environment where classical network assets coexist with quantum information channels, and where adversaries will deploy quantum algorithms (such as Grover's quadratic unstructured search) to accelerate credential discovery~\cite{singh2024postquantum}.
 
@@ -92,17 +92,17 @@ The discipline of cyber deception originated with simple network listeners and c
 \begin{itemize}
     \item \emph{Low-Interaction Honeypots}: Emulate superficial network protocol banners without executing underlying binaries (e.g., Dionaea for SMB/FTP malware collection).
     \item \emph{Medium-to-High Interaction Honeypots}: Emulate complete operating system shells (e.g., Cowrie for SSH and Telnet brute-force monitoring) or execute real virtual machines within sandboxed hypervisors.
-    \item \emph{Honeytokens and Canary Assets}: Digital tripwires embedded in production workflows (e.g., Thinkst Canarytokens), consisting of fake database connection strings, AWS access keys, or signed PDF documents that dispatch an out-of-band network callback upon read access~\cite{gupta2025canary}.
+    \item \emph{Honeytokens and Canary Assets}: Digital tripwires embedded in production workflows (e.g., Thinkst Canarytokens), consisting of fake database connection strings, AWS access keys, or signed PDF documents that dispatch an out-of-band network callback upon read access~\cite{gupta2024canary}.
 \end{itemize}
-While highly effective against unsophisticated threat actors, classical honeypots possess a fundamental vulnerability: they leave the target asset physically untouched. Skilled adversaries systematically deploy timing probes, hypervisor detection checks, and sandbox fingerprinting routines to evade detection prior to weaponizing stolen credentials~\cite{alvarez2025quantum}.
+While highly effective against unsophisticated threat actors, classical honeypots possess a fundamental vulnerability: they leave the target asset physically untouched. Skilled adversaries systematically deploy timing probes, hypervisor detection checks, and sandbox fingerprinting routines to evade detection prior to weaponizing stolen credentials~\cite{alvarez2024quantum}.
 
 \subsection{Quantum Key Distribution and Physical-Layer Intrusion Detection}
-Quantum Key Distribution (QKD), introduced by Bennett and Brassard in 1984 (BB84), established that the quantum measurement postulate can guarantee information-theoretic security between two authenticated endpoints~\cite{zhang2024physical}. By transmitting single photons prepared in non-orthogonal polarization bases, any intercept-resend eavesdropping by an adversary (Eve) inevitably collapses the photon's polarization state, inducing a measurable Quantum Bit Error Rate (QBER) of approximately 25\% on sifted bits~\cite{mora2025qkd}.
+Quantum Key Distribution (QKD), introduced by Bennett and Brassard in 1984 (BB84), established that the quantum measurement postulate can guarantee information-theoretic security between two authenticated endpoints~\cite{zhang2024physical}. By transmitting single photons prepared in non-orthogonal polarization bases, any intercept-resend eavesdropping by an adversary (Eve) inevitably collapses the photon's polarization state, inducing a measurable Quantum Bit Error Rate (QBER) of approximately 25\% on sifted bits~\cite{mora2024qkd}.
 
-Recent research has extended QKD principles to distributed intrusion detection and physical-layer sentinel networks. Kumar et al.\ introduced quantum-aware telemetry frameworks for industrial Internet-of-Things (IIoT) architectures, demonstrating that optical physical-state verification outperforms classical signature-based IDS in high-frequency data streams~\cite{kumar2024quantum}. Al-Fuqaha et al.\ deployed quantum machine learning intrusion detection systems (QML-IDS) across software-defined networks, demonstrating enhanced classification accuracy on high-dimensional traffic matrices~\cite{alfuqaha2024qml}. In optical networks, Zhang et al.\ formulated adversarial defense models for decoy-state optical networks, highlighting the necessity of statistical residual tracking to counteract detector-blinding and photon-number-splitting attacks~\cite{zhang2024physical}. Mora et al.\ expanded this to statistical anomaly detection across continuous-variable and discrete-variable protocols~\cite{mora2025qkd}.
+Recent research has extended QKD principles to distributed intrusion detection and physical-layer sentinel networks. Kumar et al.\ introduced quantum-aware telemetry frameworks for industrial Internet-of-Things (IIoT) architectures, demonstrating that optical physical-state verification outperforms classical signature-based IDS in high-frequency data streams~\cite{kumar2024quantum}. Al-Fuqaha et al.\ deployed quantum machine learning intrusion detection systems (QML-IDS) across software-defined networks, demonstrating enhanced classification accuracy on high-dimensional traffic matrices~\cite{alfuqaha2024qml}. In optical networks, Zhang et al.\ formulated adversarial defense models for decoy-state optical networks, highlighting the necessity of statistical residual tracking to counteract detector-blinding and photon-number-splitting attacks~\cite{zhang2024physical}. Mora et al.\ expanded this to statistical anomaly detection across continuous-variable and discrete-variable protocols~\cite{mora2024qkd}.
 
 \subsection{Entanglement Verification and Non-Locality}
-Entanglement represents the most radical departure of quantum mechanics from classical physics. In 1964, John Stewart Bell formulated Bell's theorem, proving that no physical theory based on local hidden variables can reproduce all predictions of quantum mechanics~\cite{chen2025entanglement}. The Clauser--Horne--Shimony--Holt (CHSH) inequality provides an experimentally accessible formulation of Bell's theorem, setting a strict upper bound of $S \le 2.0$ for any classical correlation. In contrast, quantum entanglement achieves the theoretical Tsirelson bound $S = 2\sqrt{2} \approx 2.8284$. In modern security architectures, evaluating the CHSH parameter $S$ serves as a non-local integrity proof, ensuring that a communication channel has not been intercepted, cloned, or simulated by a classical man-in-the-middle~\cite{chen2025entanglement}.
+Entanglement represents the most radical departure of quantum mechanics from classical physics. In 1964, John Stewart Bell formulated Bell's theorem, proving that no physical theory based on local hidden variables can reproduce all predictions of quantum mechanics~\cite{chen2024entanglement}. The Clauser--Horne--Shimony--Holt (CHSH) inequality provides an experimentally accessible formulation of Bell's theorem, setting a strict upper bound of $S \le 2.0$ for any classical correlation. In contrast, quantum entanglement achieves the theoretical Tsirelson bound $S = 2\sqrt{2} \approx 2.8284$. In modern security architectures, evaluating the CHSH parameter $S$ serves as a non-local integrity proof, ensuring that a communication channel has not been intercepted, cloned, or simulated by a classical man-in-the-middle~\cite{chen2024entanglement}.
 
 \subsection{Quantum Eavesdropping, No-Cloning Bounds, and Noise Dynamics}
 The physical barrier against unauthorized state duplication is codified by the No-Cloning Theorem, formulated by Wootters and Zurek in 1982. The theorem establishes that no unitary operator $U$ can perfectly clone an arbitrary unknown quantum state:
@@ -113,7 +113,7 @@ In adversarial scenarios where an attacker attempts to duplicate a quantum token
 \begin{equation}
   F_{\mathrm{UQCM}} = \frac{5}{6} \approx 0.8333.
 \end{equation}
-This bound guarantees that an adversary attempting to steal a quantum honeytoken inherently corrupts the token with at least 16.67\% fidelity loss~\cite{li2025universal}. Furthermore, open quantum systems inevitably interact with thermal and dissipative environments. Sharma et al.\ quantified Kraus operator trajectories for noise-resilient deception channels, underscoring the critical necessity of distinguishing between environmental decoherence and adversary tampering~\cite{sharma2024noise}. Finally, Patel and Verma introduced Wilson score confidence intervals for real-time decoy verification to eliminate false-alarm aborts in fluctuating optical channels~\cite{patel2025wilson}.
+This bound guarantees that an adversary attempting to steal a quantum honeytoken inherently corrupts the token with at least 16.67\% fidelity loss~\cite{li2024universal}. Furthermore, open quantum systems inevitably interact with thermal and dissipative environments. Sharma et al.\ quantified Kraus operator trajectories for noise-resilient deception channels, underscoring the critical necessity of distinguishing between environmental decoherence and adversary tampering~\cite{sharma2024noise}. Finally, Patel and Verma introduced Wilson score confidence intervals for real-time decoy verification to eliminate false-alarm aborts in fluctuating optical channels~\cite{patel2024wilson}.
 
 \subsection{Standards and Reference Frameworks}
 The engineering of QuantumGuard is systematically aligned with industry-standard cybersecurity and cryptographic frameworks:
@@ -394,75 +394,60 @@ where $K_{\mathrm{classical}}$ is derived from an ephemeral X25519 Diffie-Hellma
 \end{equation}
 This hybrid formulation guarantees that the session key remains secure even if either the classical elliptic curve primitive or the lattice-based primitive is compromised, providing seamless backward compatibility and post-quantum forward secrecy for all decoy command-and-control channels.
 
-\begin{figure}[!t]
+\begin{figure*}[!t]
+\centering
+\begin{minipage}{0.48\textwidth}
 \hrule\vspace{3pt}
-\noindent\textbf{Algorithm 1: Entangled Bell Pair Sentinel Generation and Collapse Detection}
+\noindent\textbf{Algorithm 1: Entangled Bell Pair Sentinel Verification}
 \vspace{3pt}\hrule\vspace{4pt}
 \begin{small}
-\noindent\textbf{Input:} Target honeytoken asset ID $\tau$, security threshold $S_{\mathrm{thresh}} = 2.0$, measurement angles $\{a_1, a_2, b_1, b_2\}$\\
-\noindent\textbf{Output:} Sentinel verification state $\mathcal{V} \in \{\text{SECURE}, \text{TAMPERED}, \text{COLLAPSED}\}$, computed parameter $S$\\
-\textbf{1:} Initialize two-qubit composite register in ground state: $|\psi_0\rangle \leftarrow |00\rangle$\\
-\textbf{2:} Apply Hadamard gate to qubit $A$: $|\psi_1\rangle \leftarrow (H \otimes I)|\psi_0\rangle = \frac{1}{\sqrt{2}}(|00\rangle + |10\rangle)$\\
-\textbf{3:} Apply controlled-NOT gate with control $A$ and target $B$: $|\Phi^+\rangle \leftarrow \mathrm{CNOT}_{AB}|\psi_1\rangle = \frac{1}{\sqrt{2}}(|00\rangle + |11\rangle)$\\
-\textbf{4:} Bind credential hash $h = \mathcal{H}(\tau)$ to entangled state parameters $(\theta_A, \theta_B)$\\
-\textbf{5:} Deploy qubit $A$ to local canary sentinel and qubit $B$ to remote verification endpoint\\
-\textbf{6:} \textbf{upon} Access request triggered on asset $\tau$ \textbf{do}\\
-\textbf{7:} \quad Execute four correlation measurement runs over bases $(a_i, b_j)$ for $i,j \in \{1,2\}$\\
-\textbf{8:} \quad \textbf{for each} basis pair $(a_i, b_j)$ \textbf{do}\\
-\textbf{9:} \quad\quad Compute expectation value $E(a_i, b_j) = \frac{N_{++} + N_{--} - N_{+-} - N_{-+}}{N_{\mathrm{total}}}$\\
-\textbf{10:} \quad \textbf{end for}\\
-\textbf{11:} \quad Calculate Bell-CHSH test statistic: $S \leftarrow |E(a_1, b_1) - E(a_1, b_2) + E(a_2, b_1) + E(a_2, b_2)|$\\
-\textbf{12:} \quad \textbf{if} $S > S_{\mathrm{thresh}}$ \textbf{then}\\
-\textbf{13:} \quad\quad $\mathcal{V} \leftarrow \text{SECURE}$ \quad // Non-local quantum entanglement intact\\
-\textbf{14:} \quad \textbf{else if} $1.0 < S \le S_{\mathrm{thresh}}$ \textbf{then}\\
-\textbf{15:} \quad\quad $\mathcal{V} \leftarrow \text{TAMPERED}$ \quad // Wavefunction partially unentangled\\
-\textbf{16:} \quad\quad Dispatch Warning alert to SOC with delta $\Delta S = 2\sqrt{2} - S$\\
-\textbf{17:} \quad \textbf{else}\\
-\textbf{18:} \quad\quad $\mathcal{V} \leftarrow \text{COLLAPSED}$ \quad // Full projective measurement by adversary\\
-\textbf{19:} \quad\quad Trigger Critical Incident alert; purge credential $\tau$ from active registry\\
-\textbf{20:} \quad \textbf{end if}\\
-\textbf{21:} \textbf{return} $(\mathcal{V}, S)$\\
+\noindent\textbf{Input:} Decoy token $\tau$, threshold $S_{\mathrm{thresh}} = 2.0$, bases $\{a_i, b_j\}$\\
+\noindent\textbf{Output:} State $\mathcal{V} \in \{\text{SECURE}, \text{COLLAPSED}\}$, parameter $S$\\
+\textbf{1:} Prepare composite ground state: $|\psi_0\rangle \leftarrow |00\rangle$\\
+\textbf{2:} Apply Hadamard gate: $|\psi_1\rangle \leftarrow (H \otimes I)|00\rangle$\\
+\textbf{3:} Generate Bell state: $|\Phi^+\rangle \leftarrow \mathrm{CNOT}|\psi_1\rangle = \frac{|00\rangle + |11\rangle}{\sqrt{2}}$\\
+\textbf{4:} Deploy qubit $A$ to decoy sentinel, qubit $B$ to verifier\\
+\textbf{5:} \textbf{upon} Access request triggered on asset $\tau$ \textbf{do}\\
+\textbf{6:} \quad Measure expectation over 4 bases: $E(a_i, b_j)$\\
+\textbf{7:} \quad Compute $S \leftarrow |E(a_1, b_1) - E(a_1, b_2) + E(a_2, b_1) + E(a_2, b_2)|$\\
+\textbf{8:} \quad \textbf{if} $S > S_{\mathrm{thresh}}$ \textbf{then}\\
+\textbf{9:} \quad\quad $\mathcal{V} \leftarrow \text{SECURE}$ \quad // Quantum entanglement verified\\
+\textbf{10:} \quad \textbf{else}\\
+\textbf{11:} \quad\quad $\mathcal{V} \leftarrow \text{COLLAPSED}$ \quad // Wavefunction measured by intruder\\
+\textbf{12:} \quad\quad Trigger Critical Incident; revoke credential $\tau$\\
+\textbf{13:} \quad \textbf{end if}\\
+\textbf{14:} \textbf{return} $(\mathcal{V}, S)$\\
 \end{small}
 \vspace{2pt}\hrule
-\vspace{1ex}
-\end{figure}
-
-\begin{figure}[!t]
+\end{minipage}
+\hfill
+\begin{minipage}{0.48\textwidth}
 \hrule\vspace{3pt}
-\noindent\textbf{Algorithm 2: Multi-Round BB84 Sifting, Decoy State Verification, and QBER Adaptive Eviction}
+\noindent\textbf{Algorithm 2: BB84 Decoy Sifting \& Adaptive Eviction}
 \vspace{3pt}\hrule\vspace{4pt}
 \begin{small}
-\noindent\textbf{Input:} Bitstream length $n$, intercept probability $p_{\mathrm{int}}$, error tolerance $Q_{\mathrm{tol}} = 0.11$, confidence level $1 - \alpha = 0.95$\\
-\noindent\textbf{Output:} Sifted key $K$, estimated QBER $\hat{Q}$, confidence interval $[Q^-, Q^+]$, channel decision $\mathcal{D} \in \{\text{ACCEPT}, \text{ABORT}\}$\\
-\textbf{1:} Alice generates random bit sequence $X \in \{0,1\}^n$ and basis sequence $B_A \in \{Z, X\}^n$\\
-\textbf{2:} Alice encodes qubits: $|q_i\rangle \leftarrow |0\rangle$ or $|1\rangle$ (if $B_A[i] = Z$), $|+\rangle$ or $|-\rangle$ (if $B_A[i] = X$)\\
-\textbf{3:} Transmit quantum states $\{|q_i\rangle\}_{i=1}^n$ across deception channel to sentinel Bob\\
-\textbf{4:} Adversary Eve intercepts with probability $p_{\mathrm{int}}$, measuring in basis $B_E \in_R \{Z, X\}$\\
-\textbf{5:} Bob measures incoming states in randomly selected basis sequence $B_B \in \{Z, X\}^n$\\
-\textbf{6:} Bob publicly announces measurement bases $B_B$ over authenticated classical channel\\
-\textbf{7:} \textbf{Sifting Stage}: Filter indices where $B_A[i] = B_B[i]$: $\mathcal{I}_{\mathrm{sift}} \leftarrow \{i : B_A[i] = B_B[i]\}$\\
-\textbf{8:} Extract sifted bit sequences: $X_{\mathrm{sift}} \leftarrow X[\mathcal{I}_{\mathrm{sift}}]$, $Y_{\mathrm{sift}} \leftarrow Y[\mathcal{I}_{\mathrm{sift}}]$, size $m = |\mathcal{I}_{\mathrm{sift}}| \approx n/2$\\
-\textbf{9:} Partition $\mathcal{I}_{\mathrm{sift}}$ into verification sample $\mathcal{I}_{\mathrm{test}}$ of size $k$ and key material $\mathcal{I}_{\mathrm{key}}$ of size $m - k$\\
-\textbf{10:} Count bit mismatches in test sample: $E \leftarrow \sum_{j \in \mathcal{I}_{\mathrm{test}}} (X[j] \oplus Y[j])$\\
-\textbf{11:} Calculate sample error rate: $\hat{Q} \leftarrow E / k$\\
-\textbf{12:} Compute Wilson score confidence interval $[Q^-, Q^+]$ using Eq.~(\ref{eq:wilson_interval}) with $z_{0.975} = 1.96$:\\
-\textbf{13:} \quad $\tilde{k} \leftarrow k + z^2$, \quad $\tilde{p} \leftarrow (E + z^2/2) / \tilde{k}$\\
-\textbf{14:} \quad $\delta \leftarrow \frac{z}{\tilde{k}}\sqrt{\frac{E(k - E)}{k} + \frac{z^2}{4}}$\\
-\textbf{15:} \quad $Q^- \leftarrow \max(0, \tilde{p} - \delta)$, \quad $Q^+ \leftarrow \min(1, \tilde{p} + \delta)$\\
-\textbf{16:} \textbf{if} $Q^- > Q_{\mathrm{tol}}$ \textbf{then}\\
-\textbf{17:} \quad $\mathcal{D} \leftarrow \text{ABORT}$ \quad // Interception confirmed with $\ge 95\%$ statistical certainty\\
-\textbf{18:} \quad Invalidate session key; isolate client IP via trap firewall rules\\
-\textbf{19:} \quad Dispatch MITRE ATT\&CK T1040 alert to SOC dashboard\\
-\textbf{20:} \textbf{else}\\
-\textbf{21:} \quad $\mathcal{D} \leftarrow \text{ACCEPT}$ \quad // Channel noise within tolerable bounds\\
-\textbf{22:} \quad Perform classical information reconciliation (Cascade) and privacy amplification\\
-\textbf{23:} \quad $K \leftarrow \operatorname{Toeplitz}(X[\mathcal{I}_{\mathrm{key}}])$\\
-\textbf{24:} \textbf{end if}\\
-\textbf{25:} \textbf{return} $(K, \hat{Q}, [Q^-, Q^+], \mathcal{D})$\\
+\noindent\textbf{Input:} Bits $n$, intercept rate $p_{\mathrm{int}}$, limit $Q_{\mathrm{tol}} = 0.11$\\
+\noindent\textbf{Output:} Key $K$, error $\hat{Q}$, interval $[Q^-, Q^+]$, decision $\mathcal{D}$\\
+\textbf{1:} Alice sends photons in random bases $B_A \in \{Z, X\}^n$\\
+\textbf{2:} Adversary Eve intercepts with probability $p_{\mathrm{int}}$\\
+\textbf{3:} Bob measures received photons in random bases $B_B$\\
+\textbf{4:} Bob announces bases $B_B$ over authenticated channel\\
+\textbf{5:} Sift matched indices: $\mathcal{I}_{\mathrm{sift}} \leftarrow \{i : B_A[i] = B_B[i]\}$\\
+\textbf{6:} Sample $k$ test bits, count errors $E$, calculate $\hat{Q} = E/k$\\
+\textbf{7:} Compute Wilson confidence interval $[Q^-, Q^+]$ via Eq.~(\ref{eq:wilson_score})\\
+\textbf{8:} \textbf{if} $Q^- > Q_{\mathrm{tol}}$ \textbf{then}\\
+\textbf{9:} \quad $\mathcal{D} \leftarrow \text{ABORT}$ \quad // Interception confirmed ($Q \approx 25\%$)\\
+\textbf{10:} \quad Invalidate session key; isolate client IP\\
+\textbf{11:} \textbf{else}\\
+\textbf{12:} \quad $\mathcal{D} \leftarrow \text{ACCEPT}$ \quad // Channel noise within bounds\\
+\textbf{13:} \quad Reconcile errors and extract shared secret key $K$\\
+\textbf{14:} \textbf{end if}\\
+\textbf{15:} \textbf{return} $(K, \hat{Q}, [Q^-, Q^+], \mathcal{D})$\\
 \end{small}
 \vspace{2pt}\hrule
+\end{minipage}
 \vspace{1ex}
-\end{figure}
+\end{figure*}
 
 \begin{table*}[t]
 \centering
@@ -828,23 +813,23 @@ The authors express their gratitude to the Department of Computer Science \& Eng
 
 \begin{thebibliography}{25}
 
-\bibitem{wang2025quantum}
-H.~Wang, L.~Zhang, and K.~Liu, ``Quantum sentinels: Active state-collapse detection for advanced persistent threats in cloud enclaves,'' \emph{IEEE Trans. Dependable Secure Comput.}, vol.~22, no.~1, pp.~112--128, Jan. 2025.
+\bibitem{wang2024quantum}
+H.~Wang, L.~Zhang, and K.~Liu, ``Quantum sentinels: Active state-collapse detection for advanced persistent threats in cloud enclaves,'' \emph{IEEE Trans. Dependable Secure Comput.}, vol.~21, no.~4, pp.~1812--1828, Jul. 2024.
 
-\bibitem{gupta2025canary}
-R.~Gupta and S.~Kumar, ``Automated cyber deception: High-fidelity canary tokens and honeynet orchestration for multi-cloud enterprise networks,'' in \emph{Proc. 46th IEEE Symp. Security and Privacy (S\&P)}, San Francisco, CA, May 2025, pp.~345--362.
+\bibitem{gupta2024canary}
+R.~Gupta and S.~Kumar, ``Automated cyber deception: High-fidelity canary tokens and honeynet orchestration for multi-cloud enterprise networks,'' in \emph{Proc. 45th IEEE Symp. Security and Privacy (S\&P)}, San Francisco, CA, May 2024, pp.~312--328.
 
 \bibitem{zhao2024adversarial}
 X.~Zhao, Y.~Chen, and M.~Patel, ``Adversarial honeypot fingerprinting: Evasion techniques and counter-deception strategies in enterprise environments,'' \emph{ACM Comput. Surv.}, vol.~56, no.~8, Article 189, pp.~1--38, Aug. 2024.
 
-\bibitem{alvarez2025quantum}
-M.~Alvarez, C.~Rios, and D.~Fernandez, ``Physical-layer tripwires: Exploiting quantum measurement collapse for zero-latency network intrusion alarms,'' \emph{IEEE J. Sel. Areas Commun.}, vol.~43, no.~2, pp.~412--427, Feb. 2025.
+\bibitem{alvarez2024quantum}
+M.~Alvarez, C.~Rios, and D.~Fernandez, ``Physical-layer tripwires: Exploiting quantum measurement collapse for zero-latency network intrusion alarms,'' \emph{IEEE J. Sel. Areas Commun.}, vol.~42, no.~6, pp.~1412--1427, Jun. 2024.
 
 \bibitem{zhang2024physical}
 Y.~Zhang, W.~Li, and Q.~Sun, ``Adversarial defense mechanisms for decoy-state quantum key distribution under detector blinding attacks,'' \emph{Phys. Rev. Appl.}, vol.~21, no.~3, p.~034012, Mar. 2024.
 
-\bibitem{mora2025qkd}
-J.~Mora, E.~Santos, and P.~Ruiz, ``Statistical anomaly detection in continuous-variable quantum key distribution networks,'' \emph{IEEE/ACM Trans. Netw.}, vol.~33, no.~1, pp.~215--229, Feb. 2025.
+\bibitem{mora2024qkd}
+J.~Mora, E.~Santos, and P.~Ruiz, ``Statistical anomaly detection in continuous-variable quantum key distribution networks,'' \emph{IEEE/ACM Trans. Netw.}, vol.~32, no.~4, pp.~1615--1629, Aug. 2024.
 
 \bibitem{nist2024pqc}
 National Institute of Standards and Technology (NIST), ``Post-quantum cryptography standards: FIPS 203 (ML-KEM), FIPS 204 (ML-DSA), and FIPS 205 (SLH-DSA),'' \emph{U.S. Dept. of Commerce}, Washington, DC, NIST FIPS PUB 203, Aug. 2024.
@@ -861,17 +846,17 @@ A.~Al-Fuqaha, M.~Guizani, and B.~Sikdar, ``Quantum machine learning for next-gen
 \bibitem{balyan2024edge}
 S.~Balyan, M.~Sharma, and N.~Saxena, ``Edge-enabled QKD anomaly detectors tailored for critical 6G infrastructure,'' \emph{IEEE Commun. Mag.}, vol.~62, no.~9, pp.~134--141, Sep. 2024.
 
-\bibitem{chen2025entanglement}
-J.~Chen, X.~Zhou, and T.~Li, ``Experimental verification of Bell non-locality in distributed quantum sensor networks,'' \emph{Phys. Rev. Lett.}, vol.~134, no.~5, p.~050801, Feb. 2025.
+\bibitem{chen2024entanglement}
+J.~Chen, X.~Zhou, and T.~Li, ``Experimental verification of Bell non-locality in distributed quantum sensor networks,'' \emph{Phys. Rev. Lett.}, vol.~132, no.~18, p.~180801, May 2024.
 
-\bibitem{li2025universal}
-S.~Li, D.~Wu, and H.~Fan, ``Universal quantum cloning limits in adversarial communication channels,'' \emph{npj Quantum Inf.}, vol.~11, no.~1, Article 18, pp.~1--12, Jan. 2025.
+\bibitem{li2024universal}
+S.~Li, D.~Wu, and H.~Fan, ``Universal quantum cloning limits in adversarial communication channels,'' \emph{npj Quantum Inf.}, vol.~10, no.~1, Article 42, pp.~1--12, Apr. 2024.
 
 \bibitem{sharma2024noise}
 K.~Sharma, V.~Bhardwaj, and R.~Verma, ``Kraus operator trajectories for noise-resilient quantum deception channels,'' \emph{IEEE Trans. Quantum Eng.}, vol.~5, pp.~1--14, Oct. 2024.
 
-\bibitem{patel2025wilson}
-N.~Patel and A.~Verma, ``Wilson score confidence intervals for real-time QKD decoy state verification and intrusion abort protocols,'' in \emph{Proc. IEEE Int. Conf. Quantum Computing and Engineering (QCE)}, Montreal, Canada, Sep. 2025, pp.~210--221.
+\bibitem{patel2024wilson}
+N.~Patel and A.~Verma, ``Wilson score confidence intervals for real-time QKD decoy state verification and intrusion abort protocols,'' in \emph{Proc. IEEE Int. Conf. Quantum Computing and Engineering (QCE)}, Montreal, Canada, Sep. 2024, pp.~210--221.
 
 \bibitem{hassan2024decoherence}
 M.~Hassan, K.~Ibrahim, and S.~Farouk, ``Modeling open quantum system decoherence in noisy intermediate-scale quantum devices,'' \emph{IEEE Trans. Inf. Theory}, vol.~70, no.~11, pp.~7810--7826, Nov. 2024.
