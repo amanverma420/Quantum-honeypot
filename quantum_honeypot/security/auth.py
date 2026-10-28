@@ -53,19 +53,13 @@ def validate_security_configuration() -> None:
             raise RuntimeError(
                 "Production requires JWT_SECRET_KEY with at least 32 bytes of unique random material."
             )
-        # If running on Render/PaaS and the developer forgot to set JWT_SECRET_KEY in dashboard:
-        if not secret and is_render_or_paas:
+        # If no JWT_SECRET_KEY is provided in production, auto-generate a secure random 64-character key
+        if not secret:
             if not _AUTO_GENERATED_SECRET:
                 _AUTO_GENERATED_SECRET = secrets.token_urlsafe(48)
             os.environ["JWT_SECRET_KEY"] = _AUTO_GENERATED_SECRET
             SECRET_KEY = _AUTO_GENERATED_SECRET
             return
-
-        # If strict local production testing without Render flags:
-        if not secret:
-            raise RuntimeError(
-                "Production requires JWT_SECRET_KEY with at least 32 bytes of unique random material."
-            )
 
 
 def get_secret_key() -> str:

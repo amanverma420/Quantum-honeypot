@@ -51,7 +51,11 @@ def test_jwt_secret_override_is_used_at_runtime(monkeypatch):
 
 def test_production_configuration_rejects_default_jwt_secret(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "production")
-    monkeypatch.delenv("JWT_SECRET_KEY", raising=False)
+    monkeypatch.setenv("JWT_SECRET_KEY", "quantumguard-enterprise-super-secret-key-32chars!!")
+    with pytest.raises(RuntimeError, match="Production requires JWT_SECRET_KEY"):
+        validate_security_configuration()
+
+    monkeypatch.setenv("JWT_SECRET_KEY", "too-short")
     with pytest.raises(RuntimeError, match="Production requires JWT_SECRET_KEY"):
         validate_security_configuration()
 
