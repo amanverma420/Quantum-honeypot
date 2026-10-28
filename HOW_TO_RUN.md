@@ -94,7 +94,7 @@ quantum_honeypot/
 | File/Folder | What It Is |
 |-------------|-----------|
 | `paper/sn-article.tex` | Full **LaTeX research paper** (Springer Nature format, 338 lines) |
-| `paper/sn-bibliography.bib` | 15 academic references (all 2024–2025) |
+| `paper/sn-bibliography.bib` | 16 academic references (strictly up to 2024) |
 | `paper/fig_*.png` | 6 publication-quality figures embedded in the paper |
 | `notebooks/Quantum_Honeypot_Main.ipynb` | **Jupyter notebook** — runs all 4 quantum experiments step-by-step |
 | `results/quantum_honeypot_results.json` | Benchmark results (CHSH S=2.82, QBER=25.2%, MTTD=11.6ms) |

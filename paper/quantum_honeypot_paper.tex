@@ -131,6 +131,7 @@ Table~\ref{tab:comparison_lit} summarizes how QuantumGuard compares with represe
 \centering
 \caption{Feature Comparison with Representative Cyber Deception and Quantum Security Frameworks}
 \label{tab:comparison_lit}
+\resizebox{\textwidth}{!}{%
 \begin{tabular}{@{}lp{3.6cm}p{3.6cm}p{3.6cm}p{4.2cm}@{}}
 \toprule
 \textbf{Capability / Dimension} & \textbf{Cowrie (SSH/Telnet)} & \textbf{Dionaea (Low-Interaction)} & \textbf{Canarytokens (Tripwires)} & \textbf{QuantumGuard (This Work)} \\
@@ -147,7 +148,8 @@ MITRE ATT\&CK Mapping & Manual Post-Analysis & Manual Post-Analysis & Partial & 
 Telemetry Dispatch & Syslog / File & JSON File / Logstash & Webhook / Email & \textbf{Server-Sent Events (SSE) Stream} \\
 Mean Time to Detect (MTTD) & $1.2 - 2.4\,\text{s}$ & $1.8 - 3.5\,\text{s}$ & $450 - 900\,\text{ms}$ & \textbf{11.625\,ms} \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table*}
 
 \section{System Architecture}\label{sec:arch}
@@ -155,10 +157,11 @@ Mean Time to Detect (MTTD) & $1.2 - 2.4\,\text{s}$ & $1.8 - 3.5\,\text{s}$ & $45
 \subsection{High-Level Overview}
 QuantumGuard is engineered as a service-oriented, containerised platform organized into five decoupled operational layers, as detailed in Table~\ref{tab:layers}. The layered design guarantees modularity, allowing independent upgrades to deception trap daemons, quantum physics algorithms, and SOC dashboard components without disrupting running operations.
 
-\begin{table}[h]
+\begin{table}[!t]
 \centering
 \caption{System Architecture Layers and Technologies}
 \label{tab:layers}
+\resizebox{\columnwidth}{!}{%
 \begin{tabular}{@{}llp{3.8cm}@{}}
 \toprule
 \textbf{Layer} & \textbf{Component} & \textbf{Technology Stack} \\
@@ -170,7 +173,8 @@ Quantum Core & State Simulator & NumPy Vectorized Statevector, Density Matrices,
 Data Persistence & Database \& SIEM & SQLite / PostgreSQL, SQLAlchemy, JSONL Audit Logs \\
 Infrastructure & Containerization & Docker, Docker Compose, Windows / Linux OS \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table}
 
 \subsection{Presentation Layer and Real-Time SOC Telemetry}
@@ -219,6 +223,7 @@ QuantumGuard provides comprehensive deception coverage spanning cloud, database,
 \centering
 \caption{Supported Deception Vectors, Asset Types, and Quantum Verification Schemes}
 \label{tab:vectors}
+\resizebox{\textwidth}{!}{%
 \begin{tabular}{@{}lp{3.8cm}p{3.8cm}p{3.8cm}p{4.2cm}@{}}
 \toprule
 \textbf{Decoy Vector} & \textbf{Asset Identifier} & \textbf{Emulated Service / Target} & \textbf{Placement Enclave} & \textbf{Quantum Verification Scheme} \\
@@ -231,7 +236,8 @@ Filesystem Canary & \texttt{aws\_credentials.ini} & AWS Root Secret Storage & \t
 HTTP Trap & Port 8080 Gateway & Internal Admin Console & Corporate DMZ Subnet & Automated Path Traversal \& SQLi Sentinels \\
 SSH Trap & Port 2222 Bastion & Ubuntu OpenSSH 8.9 Server & Perimeter Management Port & Interactive Brute-Force Telemetry Logger \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table*}
 
 \section{Core Quantum and Deception Modules}\label{sec:modules}
@@ -453,6 +459,7 @@ This hybrid formulation guarantees that the session key remains secure even if e
 \centering
 \caption{Quantum Deception Component Analysis and Verification Summary}
 \label{tab:components}
+\resizebox{\textwidth}{!}{%
 \begin{tabular}{@{}lp{3.6cm}p{4.2cm}p{4.8cm}@{}}
 \toprule
 \textbf{Module / Protocol} & \textbf{Physical Principle} & \textbf{Mathematical Formulation} & \textbf{Security Detection Value} \\
@@ -465,7 +472,8 @@ CPTP Kraus Noise Channels & Open Quantum Decoherence & $\mathcal{E}(\rho) = \sum
 Grover Threat Simulator & Amplitude Amplification & $R \approx \frac{\pi}{4}\sqrt{N/M}, \quad P = \sin^2((2r+1)\theta)$ & Benchmarks post-quantum brute-force risk \\
 Quantum Teleportation & Entanglement Transfer & $|\Phi^+\rangle$ Bell basis measurement $+ X^{m_1}Z^{m_0}$ correction & Verifies lossless credential recovery \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table*}
 
 \section{Security Analysis and Detection Methodology}\label{sec:methodology}
@@ -482,10 +490,11 @@ We assume an active, computationally bounded adversary $\mathcal{A}$ possessing 
 \subsection{Severity Classification Framework}
 All security events detected across classical traps and quantum sentinels are classified into a four-tier severity taxonomy described in Table~\ref{tab:severity}.
 
-\begin{table}[h]
+\begin{table}[!t]
 \centering
 \caption{Severity Classification Framework}
 \label{tab:severity}
+\resizebox{\columnwidth}{!}{%
 \begin{tabular}{@{}llp{4.6cm}@{}}
 \toprule
 \textbf{Severity} & \textbf{Colour} & \textbf{Operational Definition} \\
@@ -495,7 +504,8 @@ High & Orange & Unauthorized access to decoy databases, canary file modification
 Warning & Yellow & Port reconnaissance, suspicious HTTP probes on non-existent endpoints, or elevated Kraus noise. \\
 Info & Blue & Normal sentinel heartbeat, successful administrative login, or completed baseline quantum calibration. \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table}
 
 \subsection{Scoring and Risk Quantification Methodology}
@@ -515,10 +525,11 @@ QuantumGuard computes two aggregate security metrics:
 \subsection{Standards and Reference Frameworks Mapping}
 Analysis findings are mapped to industry standards summarized in Table~\ref{tab:standards}.
 
-\begin{table}[h]
+\begin{table}[!t]
 \centering
 \caption{Standards and Reference Frameworks Mapping}
 \label{tab:standards}
+\resizebox{\columnwidth}{!}{%
 \begin{tabular}{@{}ll@{}}
 \toprule
 \textbf{Framework} & \textbf{Application in QuantumGuard} \\
@@ -528,7 +539,8 @@ CWE & Code and trap findings linked to Common Weakness IDs \\
 CVSS v3.1 & Base score vector calculations for all security incidents \\
 NIST PQC & Post-quantum resistance benchmarks (FIPS 203/204/205) \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table}
 
 \section{User Interface and SOC Workflow}\label{sec:workflow}
@@ -668,7 +680,7 @@ Figure~\ref{fig:case_study} reproduces an illustrative telemetry incident report
 \begin{figure}[h]
 \centering
 \includegraphics[width=0.48\textwidth]{fig_case_study.png}
-\caption{Illustrative platform scan and telemetry report view: Incident \#INC-2026-084 showing security score collapse, fidelity degradation, CHSH violation failure, and chronological correlation timeline.}
+\caption{Illustrative platform scan and telemetry report view: Incident \#INC-2024-084 showing security score collapse, fidelity degradation, CHSH violation failure, and chronological correlation timeline.}
 \label{fig:case_study}
 \end{figure}
 
@@ -737,10 +749,11 @@ For $n=3$ qubits ($N=8$ states), classical search requires an average of 4.5 ora
 \subsection{Quantitative Performance Evaluation}
 Table~\ref{tab:performance} presents comprehensive performance and detection evaluation metrics compiled across $N = 1,000$ empirical test runs.
 
-\begin{table}[h]
+\begin{table}[!t]
 \centering
 \caption{Comprehensive Performance and Detection Evaluation Metrics}
 \label{tab:performance}
+\resizebox{\columnwidth}{!}{%
 \begin{tabular}{@{}ll@{}}
 \toprule
 \textbf{Metric} & \textbf{Empirical Value} \\
@@ -762,7 +775,8 @@ Mean Time to Detect (MTTD) --- Quantum Sentinel & 5.1\,ms \\
 Peak SSE Event Throughput & 1,450 events/sec \\
 Database Write Latency & 2.1\,ms \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table}
 
 \section{Discussion}\label{sec:discussion}
