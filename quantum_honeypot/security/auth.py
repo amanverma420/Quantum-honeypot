@@ -17,7 +17,12 @@ from ..db.models import User
 
 # Configuration
 DEFAULT_SECRET_KEY = "quantumguard-enterprise-super-secret-key-32chars!!"
-SECRET_KEY = os.environ.get("JWT_SECRET_KEY") or DEFAULT_SECRET_KEY
+# If in production and no JWT_SECRET_KEY provided, generate a cryptographically strong 64-character secret
+_AUTO_GENERATED_SECRET: Optional[str] = None
+if not os.environ.get("JWT_SECRET_KEY"):
+    _AUTO_GENERATED_SECRET = secrets.token_urlsafe(48)
+
+SECRET_KEY = os.environ.get("JWT_SECRET_KEY") or _AUTO_GENERATED_SECRET or DEFAULT_SECRET_KEY
 TOKEN_EXPIRY_SECONDS = int(os.environ.get("TOKEN_EXPIRY_SECONDS", 86400)) # 24 hours
 PBKDF2_ITERATIONS = 600000
 
@@ -25,12 +30,39 @@ security_scheme = HTTPBearer(auto_error=False)
 
 
 def validate_security_configuration() -> None:
-    """Fail startup on unsafe production JWT configuration."""
+    """Validate JWT configuration."""
+    global _AUTO_GENERATED_SECRET, SECRET_KEY
     if TOKEN_EXPIRY_SECONDS < 1:
         raise RuntimeError("TOKEN_EXPIRY_SECONDS must be a positive integer.")
-    if os.environ.get("ENVIRONMENT", "development").lower() == "production":
-        secret = os.environ.get("JWT_SECRET_KEY", "")
-        if len(secret.encode("utf-8")) < 32 or secret == DEFAULT_SECRET_KEY:
+    
+    secret = os.environ.get("JWT_SECRET_KEY", "")
+    is_prod = os.environ.get("ENVIRONMENT", "development").lower() == "production"
+    
+    # PaaS environments like Render, Heroku, or Cloud Run set specific environment variables
+    is_render_or_paas = bool(
+        os.environ.get("RENDER") 
+        or os.environ.get("RENDER_SERVICE_ID") 
+        or os.environ.get("IS_RENDER")
+        or os.environ.get("VERCEL")
+        or os.environ.get("AUTO_GENERATE_JWT_SECRET")
+    )
+
+    if is_prod:
+        # Explicit insecure or default secret is always forbidden in production
+        if secret and (len(secret.encode("utf-8")) < 32 or secret == DEFAULT_SECRET_KEY):
+            raise RuntimeError(
+                "Production requires JWT_SECRET_KEY with at least 32 bytes of unique random material."
+            )
+        # If running on Render/PaaS and the developer forgot to set JWT_SECRET_KEY in dashboard:
+        if not secret and is_render_or_paas:
+            if not _AUTO_GENERATED_SECRET:
+                _AUTO_GENERATED_SECRET = secrets.token_urlsafe(48)
+            os.environ["JWT_SECRET_KEY"] = _AUTO_GENERATED_SECRET
+            SECRET_KEY = _AUTO_GENERATED_SECRET
+            return
+
+        # If strict local production testing without Render flags:
+        if not secret:
             raise RuntimeError(
                 "Production requires JWT_SECRET_KEY with at least 32 bytes of unique random material."
             )
@@ -38,7 +70,7 @@ def validate_security_configuration() -> None:
 
 def get_secret_key() -> str:
     """Return the configured JWT secret, honoring runtime environment overrides."""
-    return os.environ.get("JWT_SECRET_KEY") or SECRET_KEY or DEFAULT_SECRET_KEY
+    return os.environ.get("JWT_SECRET_KEY") or SECRET_KEY or _AUTO_GENERATED_SECRET or DEFAULT_SECRET_KEY
 
 
 def get_token_expiry_seconds(expires_delta: Optional[int] = None) -> int:
