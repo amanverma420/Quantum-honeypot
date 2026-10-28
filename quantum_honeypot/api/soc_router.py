@@ -32,6 +32,8 @@ _ALLOWED_DOCS = {
     "QUANTUM_CONCEPTS": "QUANTUM_CONCEPTS.md",
     "SECURITY": "SECURITY.md",
     "DEPLOYMENT": "DEPLOYMENT.md",
+    "PRESENTATION": "PRESENTATION_SCRIPT.md",
+    "HOW_TO_RUN": "HOW_TO_RUN.md",
 }
 
 router = APIRouter(prefix="/api/v1/soc", tags=["SOC Dashboard & Telemetry"])

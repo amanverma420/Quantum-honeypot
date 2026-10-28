@@ -834,7 +834,7 @@ async function exportData(format) {
   }
 }
 
-// ── 7b. Markdown Document Viewer ──
+// ── 7b. Enhanced Markdown & Scientific Documentation Viewer ──
 async function loadMarkdownDoc(docName) {
   const container = document.getElementById('markdown-viewer-content');
   const title = document.getElementById('markdown-viewer-title');
@@ -845,7 +845,7 @@ async function loadMarkdownDoc(docName) {
   const activeTab = document.querySelector(`.doc-tab[data-doc="${docName}"]`);
   if (activeTab) activeTab.classList.add('active');
 
-  container.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted);">Loading document...</div>';
+  container.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-muted);"><span class="pulse"></span> Loading document...</div>';
   if (title) title.textContent = docName.replace(/_/g, ' ');
 
   try {
@@ -853,36 +853,324 @@ async function loadMarkdownDoc(docName) {
     if (!res.ok) throw new Error(`Document not found (${res.status})`);
     const md = await res.text();
 
-    // Use marked.js if available, otherwise render as preformatted text
-    if (window.marked) {
-      container.innerHTML = `<div class="md-body">${window.marked.parse(md)}</div>`;
-    } else {
-      // Lightweight fallback renderer
-      container.innerHTML = `<div class="md-body">${renderMarkdownFallback(md)}</div>`;
+    const renderedHTML = renderRichMarkdown(md);
+    container.innerHTML = `<div class="md-body">${renderedHTML}</div>`;
+
+    // Render Math with KaTeX if available
+    if (window.renderMathInElement) {
+      try {
+        window.renderMathInElement(container, {
+          delimiters: [
+            { left: '$$', right: '$$', display: true },
+            { left: '$', right: '$', display: false },
+            { left: '\\[', right: '\\]', display: true },
+            { left: '\\(', right: '\\)', display: false }
+          ],
+          throwOnError: false
+        });
+      } catch (mathErr) {
+        console.warn('KaTeX auto-render error:', mathErr);
+      }
     }
+
+    // Attach copy button listeners
+    container.querySelectorAll('.md-copy-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const code = btn.closest('.md-code-wrapper')?.querySelector('code')?.innerText || '';
+        navigator.clipboard.writeText(code).then(() => {
+          const orig = btn.textContent;
+          btn.textContent = 'Copied!';
+          setTimeout(() => btn.textContent = orig, 1800);
+        });
+      });
+    });
+
   } catch (err) {
     container.innerHTML = `<div style="color:var(--danger);padding:2rem;">Error loading document: ${err.message}</div>`;
   }
 }
 
+function renderRichMarkdown(rawMd) {
+  if (!rawMd) return '';
+  let md = rawMd;
+
+  // 1. Process GitHub Admonitions / Callouts (> [!NOTE], etc.)
+  md = md.replace(/^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*\n((?:>.*(?:\n|$))*)/gim, (match, type, content) => {
+    const cleanContent = content.split('\n').map(l => l.replace(/^>\s?/, '')).join('\n').trim();
+    const t = type.toUpperCase();
+    const icons = { NOTE: 'ℹ️ Note', TIP: '💡 Tip', IMPORTANT: '⚡ Important', WARNING: '⚠️ Warning', CAUTION: '🛑 Caution' };
+    const classes = { NOTE: 'md-callout-note', TIP: 'md-callout-tip', IMPORTANT: 'md-callout-important', WARNING: 'md-callout-warning', CAUTION: 'md-callout-warning' };
+    return `<div class="md-callout ${classes[t] || 'md-callout-note'}"><div class="md-callout-title">${icons[t] || t}</div><p>${cleanContent}</p></div>\n\n`;
+  });
+
+  // 2. Protect and Pre-format Math Blocks if KaTeX is not loaded
+  const hasKatex = typeof window !== 'undefined' && Boolean(window.renderMathInElement || window.katex);
+  const mathPlaceholders = [];
+
+  // Protect display math $$...$$
+  md = md.replace(/\$\$([\s\S]*?)\$\$/g, (match, eq) => {
+    const idx = mathPlaceholders.length;
+    if (hasKatex) {
+      mathPlaceholders.push(`$$${eq}$$`);
+    } else {
+      mathPlaceholders.push(`<div class="md-math-display">${formatUnicodeMath(eq)}</div>`);
+    }
+    return `@@MATH_BLOCK_${idx}@@`;
+  });
+
+  // Protect inline math $...$
+  md = md.replace(/\$([^\$\n\r]+?)\$/g, (match, eq) => {
+    const idx = mathPlaceholders.length;
+    if (hasKatex) {
+      mathPlaceholders.push(`$${eq}$`);
+    } else {
+      mathPlaceholders.push(`<span class="md-math-inline">${formatUnicodeMath(eq)}</span>`);
+    }
+    return `@@MATH_INLINE_${idx}@@`;
+  });
+
+  // 3. Render Markdown through marked or robust fallback
+  let html = '';
+  if (window.marked && typeof window.marked.parse === 'function') {
+    html = window.marked.parse(md);
+  } else {
+    html = renderMarkdownFallback(md);
+  }
+
+  // 4. Restore Math Placeholders
+  mathPlaceholders.forEach((mathHtml, idx) => {
+    html = html.replace(`@@MATH_BLOCK_${idx}@@`, mathHtml);
+    html = html.replace(`@@MATH_INLINE_${idx}@@`, mathHtml);
+    // Also handle if marked wrapped in <p> tags
+    html = html.replace(`<p>@@MATH_BLOCK_${idx}@@</p>`, mathHtml);
+    html = html.replace(`<p>@@MATH_INLINE_${idx}@@</p>`, mathHtml);
+  });
+
+  // 5. Enhance Code Blocks with Language Badges and Copy Buttons
+  html = html.replace(/<pre><code(?:\s+class="language-([a-zA-Z0-9_-]+)")?>([\s\S]*?)<\/code><\/pre>/gi, (match, lang, code) => {
+    const label = (lang || 'code').toUpperCase();
+    return `<div class="md-code-wrapper"><div class="md-code-header"><span>${label}</span><button class="md-copy-btn">Copy</button></div><pre><code>${code}</code></pre></div>`;
+  });
+
+  // 6. Ensure all <table> elements are wrapped in responsive containers
+  html = html.replace(/(<table[\s\S]*?<\/table>)/gi, '<div class="table-responsive">$1</div>');
+
+  return html;
+}
+
+function formatUnicodeMath(latex) {
+  let s = latex.trim();
+  // Bra-ket notation
+  s = s.replace(/\\langle\s*([0-9a-zA-Z\+\-\*]+)\s*\|/g, '⟨$1|');
+  s = s.replace(/\|\s*([0-9a-zA-Z\+\-\*]+)\s*\\rangle/g, '|$1⟩');
+  s = s.replace(/\\vert\s*([0-9a-zA-Z\+\-\*]+)\s*\\rangle/g, '|$1⟩');
+  s = s.replace(/\\langle\s*([0-9a-zA-Z\+\-\*]+)\s*\\rangle/g, '⟨$1⟩');
+  s = s.replace(/\\langle\s*\\sigma_([xyz])\s*\\rangle/g, '⟨σ_$1⟩');
+  s = s.replace(/\\|0\\rangle/g, '|0⟩').replace(/\\|1\\rangle/g, '|1⟩');
+  s = s.replace(/\\|\\psi\\rangle/g, '|ψ⟩').replace(/\\|\\Phi\^\\+\\rangle/g, '|Φ⁺⟩');
+  s = s.replace(/\\|\\Phi\\^\\+\\rangle/g, '|Φ⁺⟩');
+
+  // Greek letters
+  s = s.replace(/\\alpha/g, 'α').replace(/\\beta/g, 'β')
+       .replace(/\\theta/g, 'θ').replace(/\\phi/g, 'φ')
+       .replace(/\\sigma/g, 'σ').replace(/\\pi/g, 'π')
+       .replace(/\\psi/g, 'ψ').replace(/\\Phi/g, 'Φ')
+       .replace(/\\rho/g, 'ρ').replace(/\\epsilon/g, 'ε');
+
+  // Operators & symbols
+  s = s.replace(/\\otimes/g, ' ⊗ ')
+       .replace(/\\dagger/g, '†')
+       .replace(/\\le/g, ' ≤ ')
+       .replace(/\\ge/g, ' ≥ ')
+       .replace(/\\approx/g, ' ≈ ')
+       .replace(/\\neq/g, ' ≠ ')
+       .replace(/\\in/g, ' ∈ ')
+       .replace(/\\cdot/g, ' · ')
+       .replace(/\\times/g, ' × ')
+       .replace(/\\pm/g, ' ± ')
+       .replace(/\\to/g, ' → ')
+       .replace(/\\leftrightarrow/g, ' ↔ ');
+
+  // Functions & fractions
+  s = s.replace(/\\frac\{1\}\{\\sqrt\{2\}\}/g, '1/√2');
+  s = s.replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '($1 / $2)');
+  s = s.replace(/\\sqrt\{2\}/g, '√2');
+  s = s.replace(/\\sqrt\{([^}]+)\}/g, '√($1)');
+  s = s.replace(/\\cos\\left\(\\frac\{([^}]+)\}\{([^}]+)\}\\right\)/g, 'cos($1/$2)');
+  s = s.replace(/\\sin\\left\(\\frac\{([^}]+)\}\{([^}]+)\}\\right\)/g, 'sin($1/$2)');
+  s = s.replace(/\\cos/g, 'cos').replace(/\\sin/g, 'sin');
+  s = s.replace(/\\text\{([^}]+)\}/g, '$1').replace(/\\mathrm\{([^}]+)\}/g, '$1');
+  s = s.replace(/\\left\(/g, '(').replace(/\\right\)/g, ')');
+  s = s.replace(/\\begin\{pmatrix\}/g, '[').replace(/\\end\{pmatrix\}/g, ']');
+  s = s.replace(/\\\\/g, '; ');
+  s = s.replace(/&/g, ', ');
+
+  return s;
+}
+
 function renderMarkdownFallback(md) {
-  // Basic markdown → HTML conversion for when marked.js is unavailable
-  let html = md
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') // XSS safety first
-    .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')           // code blocks
-    .replace(/`([^`]+)`/g, '<code>$1</code>')                             // inline code
-    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    .replace(/^\*\*(.+?)\*\*/gm, '<strong>$1</strong>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/^\* (.+)$/gm, '<li>$1</li>')
-    .replace(/^- (.+)$/gm, '<li>$1</li>')
-    .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
-    .replace(/\n{2,}/g, '</p><p>')
-    .replace(/\n/g, '<br>');
-  return `<p>${html}</p>`;
+  // Comprehensive standalone markdown fallback parser (tables, lists, headers, blocks)
+  const lines = md.split('\n');
+  let html = '';
+  let inCodeBlock = false;
+  let codeBlockLang = '';
+  let codeBuffer = [];
+  let inTable = false;
+  let tableHeaderParsed = false;
+  let inList = false;
+  let listType = 'ul';
+
+  function closeList() {
+    if (inList) {
+      html += `</${listType}>\n`;
+      inList = false;
+    }
+  }
+
+  function closeTable() {
+    if (inTable) {
+      html += `</tbody></table></div>\n`;
+      inTable = false;
+      tableHeaderParsed = false;
+    }
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i];
+    const line = rawLine.trim();
+
+    // Code blocks
+    if (line.startsWith('```')) {
+      closeList();
+      closeTable();
+      if (!inCodeBlock) {
+        inCodeBlock = true;
+        codeBlockLang = line.replace(/^```/, '').trim();
+        codeBuffer = [];
+      } else {
+        inCodeBlock = false;
+        const codeContent = escapeHTML(codeBuffer.join('\n'));
+        const label = (codeBlockLang || 'code').toUpperCase();
+        html += `<div class="md-code-wrapper"><div class="md-code-header"><span>${label}</span><button class="md-copy-btn">Copy</button></div><pre><code>${codeContent}</code></pre></div>\n`;
+      }
+      continue;
+    }
+    if (inCodeBlock) {
+      codeBuffer.push(rawLine);
+      continue;
+    }
+
+    // Horizontal Rule
+    if (/^(\-{3,}|\*{3,}|_{3,})$/.test(line)) {
+      closeList();
+      closeTable();
+      html += `<hr>\n`;
+      continue;
+    }
+
+    // Headings
+    if (/^#+\s/.test(line)) {
+      closeList();
+      closeTable();
+      const level = line.match(/^#+/)[0].length;
+      const text = parseInlineMarkdown(line.replace(/^#+\s*/, ''));
+      const tag = `h${Math.min(level, 6)}`;
+      html += `<${tag}>${text}</${tag}>\n`;
+      continue;
+    }
+
+    // Markdown Table
+    if (line.startsWith('|') && line.endsWith('|')) {
+      closeList();
+      const cells = line.slice(1, -1).split('|').map(c => parseInlineMarkdown(c.trim()));
+      
+      // Separator row (|---|---|)
+      if (cells.every(c => /^:?-+:?$/.test(c.replace(/<[^>]+>/g, '')))) {
+        tableHeaderParsed = true;
+        continue;
+      }
+
+      if (!inTable) {
+        inTable = true;
+        tableHeaderParsed = false;
+        html += `<div class="table-responsive"><table class="data-table"><thead><tr>`;
+        cells.forEach(c => html += `<th>${c}</th>`);
+        html += `</tr></thead><tbody>\n`;
+      } else {
+        html += `<tr>`;
+        cells.forEach(c => html += `<td>${c}</td>`);
+        html += `</tr>\n`;
+      }
+      continue;
+    } else {
+      closeTable();
+    }
+
+    // Lists
+    const ulMatch = line.match(/^[\*\-]\s+(.+)/);
+    const olMatch = line.match(/^(\d+)\.\s+(.+)/);
+    if (ulMatch || olMatch) {
+      const isOl = Boolean(olMatch);
+      const text = parseInlineMarkdown(isOl ? olMatch[2] : ulMatch[1]);
+      if (!inList || (isOl && listType !== 'ol') || (!isOl && listType !== 'ul')) {
+        closeList();
+        listType = isOl ? 'ol' : 'ul';
+        html += `<${listType}>\n`;
+        inList = true;
+      }
+      html += `  <li>${text}</li>\n`;
+      continue;
+    } else {
+      closeList();
+    }
+
+    // Blockquotes
+    if (line.startsWith('>')) {
+      const bqText = parseInlineMarkdown(line.replace(/^>\s?/, ''));
+      html += `<blockquote>${bqText}</blockquote>\n`;
+      continue;
+    }
+
+    // Blank line
+    if (line === '') {
+      continue;
+    }
+
+    // Paragraph
+    html += `<p>${parseInlineMarkdown(line)}</p>\n`;
+  }
+
+  closeList();
+  closeTable();
+  return html;
+}
+
+function parseInlineMarkdown(text) {
+  if (!text) return '';
+  let s = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  // Bold & Italic
+  s = s.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  s = s.replace(/___(.+?)___/g, '<strong><em>$1</em></strong>');
+  s = s.replace(/__(.+?)__/g, '<strong>$1</strong>');
+  s = s.replace(/_(.+?)_/g, '<em>$1</em>');
+
+  // Inline code
+  s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  // Links
+  s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+  // Restore protected tags
+  s = s.replace(/&lt;span class="md-math-inline"&gt;([\s\S]*?)&lt;\/span&gt;/g, '<span class="md-math-inline">$1</span>');
+  s = s.replace(/&lt;div class="md-math-display"&gt;([\s\S]*?)&lt;\/div&gt;/g, '<div class="md-math-display">$1</div>');
+
+  return s;
 }
 
 // ── 8. Real-time Server-Sent Events (SSE) ──
