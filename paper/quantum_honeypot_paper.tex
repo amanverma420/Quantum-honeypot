@@ -7,6 +7,48 @@
 \usepackage{array}
 \usepackage{xcolor}
 
+% Pure pdfTeX clickable links for citations, tables, and figures without external hyperref package dependencies
+\makeatletter
+\definecolor{ieeedarkblue}{RGB}{0,68,170}
+
+% Make \bibitem create a pdfdest destination anchor
+\let\orig@bibitem\@bibitem
+\def\@bibitem#1{%
+  \orig@bibitem{#1}%
+  \pdfdest name{cite.#1} fith\relax
+}
+
+% Make \cite create clickable link to the reference
+\def\@citex[#1]#2{%
+  \let\@citea\@empty
+  \@cite{\@for\@citeb:=#2\do
+    {\@citea\def\@citea{,\penalty\@m\ }%
+     \edef\@citeb{\expandafter\@firstofone\@citeb\@empty}%
+     \if@filesw\immediate\write\@auxout{\string\citation{\@citeb}}\fi
+     \@ifundefined{b@\@citeb}{\mbox{\reset@font\bfseries ?}%
+       \G@refundefinedtrue
+       \@warning{Citation `\@citeb' on page \thepage \space undefined}}%
+       {\leavevmode\pdfstartlink attr{/Border [0 0 0]} goto name{cite.\@citeb}%
+        \textcolor{ieeedarkblue}{\csname b@\@citeb\endcsname}%
+        \pdfendlink}}}{#1}}
+
+% Make \ref create clickable link to labeled equations, tables, figures, and sections
+\let\orig@ref\ref
+\def\ref#1{%
+  \@ifundefined{r@#1}{\orig@ref{#1}}{%
+    \leavevmode\pdfstartlink attr{/Border [0 0 0]} goto name{ref.#1}%
+    \textcolor{ieeedarkblue}{\orig@ref{#1}}%
+    \pdfendlink}%
+}
+
+% Make \label create a pdfdest destination anchor
+\let\orig@label\label
+\def\label#1{%
+  \orig@label{#1}%
+  \pdfdest name{ref.#1} fith\relax
+}
+\makeatother
+
 \begin{document}
 
 \title{Quantum-Enhanced Cyber Deception and Proactive Defensive Intelligence: A Hybrid Physical-Layer and Threat-Informed Honeypot Platform for Enterprise Security Assessment}
@@ -825,7 +867,7 @@ This paper presented \textbf{QuantumGuard}, a unified enterprise cyber deception
 \section*{Acknowledgment}
 The authors express their gratitude to the Department of Computer Science \& Engineering at COEP Technological University, Pune, for providing the laboratory infrastructure and computational facilities to conduct this research.
 
-\begin{thebibliography}{25}
+\begin{thebibliography}{20}
 
 \bibitem{wang2024quantum}
 H.~Wang, L.~Zhang, and K.~Liu, ``Quantum sentinels: Active state-collapse detection for advanced persistent threats in cloud enclaves,'' \emph{IEEE Trans. Dependable Secure Comput.}, vol.~21, no.~4, pp.~1812--1828, Jul. 2024.
@@ -886,21 +928,6 @@ J.~Biamonte, ``Universal variational quantum circuits and quantum algorithm comp
 
 \bibitem{preskill2024quantum}
 J.~Preskill, ``Quantum computing in the NISQ era and beyond: Fault-tolerant architectures and cryptographic implications,'' \emph{Quantum}, vol.~8, p.~1245, Jan. 2024.
-
-\bibitem{wootters1982single}
-W.~K. Wootters and W.~H. Zurek, ``A single quantum cannot be cloned,'' \emph{Nature}, vol.~299, no.~5886, pp.~802--803, Oct. 1982.
-
-\bibitem{buzek1996quantum}
-V.~Bu\v{z}ek and M.~Hillery, ``Quantum copying: Beyond the no-cloning theorem,'' \emph{Phys. Rev. A}, vol.~54, no.~3, pp.~1844--1852, Sep. 1996.
-
-\bibitem{clauser1969proposed}
-J.~F. Clauser, M.~A. Horne, A.~Shimony, and R.~A. Holt, ``Proposed experiment to test local hidden-variable theories,'' \emph{Phys. Rev. Lett.}, vol.~23, no.~15, pp.~880--884, Oct. 1969.
-
-\bibitem{bennett1984quantum}
-C.~H. Bennett and G.~Brassard, ``Quantum cryptography: Public key distribution and coin tossing,'' in \emph{Proc. IEEE Int. Conf. Computers, Systems and Signal Processing}, Bangalore, India, Dec. 1984, pp.~175--179.
-
-\bibitem{grover1996fast}
-L.~K. Grover, ``A fast quantum mechanical algorithm for database search,'' in \emph{Proc. 28th Annual ACM Symp. Theory of Computing (STOC)}, Philadelphia, PA, May 1996, pp.~212--219.
 
 \end{thebibliography}
 
