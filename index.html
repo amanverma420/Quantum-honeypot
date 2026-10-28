@@ -420,6 +420,9 @@
           <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
             <button class="btn btn-primary" id="btn-export-csv" onclick="exportData('csv')">Download CSV Export</button>
             <button class="btn btn-secondary" id="btn-export-json" onclick="exportData('json')">Download JSON Export</button>
+            <a href="/api/v1/soc/paper/download" class="btn btn-primary" style="background:linear-gradient(135deg, #6366f1, #a855f7);border:none;display:inline-flex;align-items:center;gap:6px;text-decoration:none;" download="Quantum-Honeypot-Research-Paper.pdf">
+              📄 Download 15-Page IEEE Research Paper (PDF)
+            </a>
           </div>
           <div id="export-status" style="margin-top:12px;font-size:13px;font-family:var(--font-mono);display:none;"></div>
         </div>
@@ -428,12 +431,13 @@
       <!-- Markdown Documentation Viewer -->
       <div class="card">
         <div class="card-header">
-          <h3>Project Documentation</h3>
+          <h3>Project Documentation &amp; Research Paper</h3>
           <span id="markdown-viewer-title" style="font-size:12px;color:var(--text-muted);font-family:var(--font-mono);"></span>
         </div>
         <!-- Doc Tabs -->
         <div class="doc-tabs-bar">
           <button class="doc-tab active" data-doc="README" onclick="loadMarkdownDoc('README')">README</button>
+          <button class="doc-tab" data-doc="PAPER" onclick="loadMarkdownDoc('PAPER')">📄 Research Paper</button>
           <button class="doc-tab" data-doc="ARCHITECTURE" onclick="loadMarkdownDoc('ARCHITECTURE')">Architecture</button>
           <button class="doc-tab" data-doc="QUANTUM_CONCEPTS" onclick="loadMarkdownDoc('QUANTUM_CONCEPTS')">Quantum Concepts</button>
           <button class="doc-tab" data-doc="SECURITY" onclick="loadMarkdownDoc('SECURITY')">Security</button>

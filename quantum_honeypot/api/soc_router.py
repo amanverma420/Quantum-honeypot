@@ -34,6 +34,7 @@ _ALLOWED_DOCS = {
     "DEPLOYMENT": "DEPLOYMENT.md",
     "PRESENTATION": "PRESENTATION_SCRIPT.md",
     "HOW_TO_RUN": "HOW_TO_RUN.md",
+    "PAPER": "RESEARCH_PAPER.md",
 }
 
 router = APIRouter(prefix="/api/v1/soc", tags=["SOC Dashboard & Telemetry"])
@@ -538,6 +539,24 @@ def get_project_doc(
         iter([raw_bytes]),
         media_type="text/plain; charset=utf-8",
         headers={"Cache-Control": "no-cache"}
+    )
+
+@router.get("/paper/download")
+def download_research_paper():
+    """Download the publication-grade 15-page IEEE Research Paper PDF."""
+    pdf_path = os.path.join(_ROOT_DIR, "Quantum-Honeypot-Research-Paper.pdf")
+    if not os.path.exists(pdf_path):
+        raise HTTPException(status_code=404, detail="Research paper PDF not found on disk")
+
+    def file_iterator():
+        with open(pdf_path, "rb") as f:
+            while chunk := f.read(65536):
+                yield chunk
+
+    return StreamingResponse(
+        file_iterator(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=Quantum-Honeypot-Research-Paper.pdf"}
     )
 
 @router.get("/stream")
